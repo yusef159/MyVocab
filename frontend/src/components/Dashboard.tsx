@@ -33,7 +33,7 @@ export default function Dashboard() {
         </div>
         {streak?.lastActivityDate && (
           <p className="text-orange-100 text-sm mt-4">
-            Last activity: {new Date(streak.lastActivityDate).toLocaleDateString()}
+            Last activity: {new Date(streak.lastActivityDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
           </p>
         )}
       </div>

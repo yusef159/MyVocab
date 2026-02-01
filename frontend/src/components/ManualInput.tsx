@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
 
@@ -7,7 +7,8 @@ type InputMode = 'manual' | 'ai';
 export default function ManualInput() {
   const [word, setWord] = useState('');
   const [inputMode, setInputMode] = useState<InputMode>('manual');
-  
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   // Manual input fields
   const [manualMeaning, setManualMeaning] = useState('');
   const [manualSentence, setManualSentence] = useState('');
@@ -27,6 +28,13 @@ export default function ManualInput() {
     }
   };
 
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (!successMessage) return;
+    const t = setTimeout(() => setSuccessMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [successMessage]);
+
   const handleSave = async (
     english: string,
     arabicMeanings: string[],
@@ -34,27 +42,26 @@ export default function ManualInput() {
   ) => {
     const result = await saveWord(english, arabicMeanings, exampleSentence);
     if (result.success) {
+      setSuccessMessage('Word saved successfully!');
       clearSuggestions();
       setWord('');
     }
-    // If duplicate, error message is shown from store, keep suggestions open
   };
 
   const handleManualSave = async () => {
     if (word.trim() && manualMeaning.trim() && manualSentence.trim()) {
-      // Split meanings by comma or newline for multiple meanings
       const meanings = manualMeaning
         .split(/[,،\n]/)
         .map(m => m.trim())
         .filter(m => m.length > 0);
-      
+
       const result = await saveWord(word.trim(), meanings, manualSentence.trim());
       if (result.success) {
+        setSuccessMessage('Word saved successfully!');
         setWord('');
         setManualMeaning('');
         setManualSentence('');
       }
-      // If duplicate, error message is shown from store, keep form data
     }
   };
 
@@ -158,9 +165,22 @@ export default function ManualInput() {
             </>
           )}
 
+          {/* Success Message */}
+          {successMessage && (
+            <div className="mb-6 p-4 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {successMessage}
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400">
+            <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               {error}
             </div>
           )}
@@ -221,6 +241,22 @@ export default function ManualInput() {
         </div>
       ) : (
         <div>
+          {successMessage && (
+            <div className="mb-4 p-4 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {successMessage}
+            </div>
+          )}
+          {error && (
+            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </div>
+          )}
           <div className="mb-4 flex items-center justify-between text-gray-400">
             <span>Select meaning and sentence for "{suggestions[0].english}"</span>
             <button

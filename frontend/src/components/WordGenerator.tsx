@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
 
@@ -6,6 +6,7 @@ export default function WordGenerator() {
   const [count, setCount] = useState(5);
   const [topic, setTopic] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const {
     suggestions,
@@ -21,16 +22,24 @@ export default function WordGenerator() {
     generateWords(count, topic || undefined);
   };
 
+  useEffect(() => {
+    if (!saveMessage) return;
+    const t = setTimeout(() => setSaveMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [saveMessage]);
+
   const handleSave = async (
     english: string,
     arabicMeanings: string[],
     exampleSentence: string,
     wordTopic?: string
   ) => {
-    await saveWord(english, arabicMeanings, exampleSentence, wordTopic);
-    // Always move to next word, whether saved or duplicate
-    // Error message will show if duplicate
-    moveToNext();
+    const result = await saveWord(english, arabicMeanings, exampleSentence, wordTopic);
+    if (result.success) {
+      setSaveMessage('Word saved successfully!');
+      moveToNext();
+    }
+    // On failure, store error is set (e.g. duplicate or "Failed to save word") and shown below
   };
 
   const moveToNext = () => {
@@ -121,6 +130,22 @@ export default function WordGenerator() {
         </div>
       ) : (
         <div>
+          {saveMessage && (
+            <div className="mb-4 p-4 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {saveMessage}
+            </div>
+          )}
+          {error && (
+            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </div>
+          )}
           {/* Progress Indicator */}
           <div className="mb-4 flex items-center justify-between text-gray-400">
             <span>
