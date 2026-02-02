@@ -44,6 +44,15 @@ export async function getWordsByStatus(status: Word['status']): Promise<Word[]> 
   return db.words.where('status').equals(status).toArray();
 }
 
+const KNOWN_PROGRESS_THRESHOLD = 0.8; // 80%
+
+function statusFromProgress(correctCount: number, wrongCount: number): Word['status'] {
+  const total = correctCount + wrongCount;
+  if (total === 0) return 'new';
+  const progress = correctCount / total;
+  return progress > KNOWN_PROGRESS_THRESHOLD ? 'known' : 'problem';
+}
+
 export async function updateWordStatus(id: string, status: Word['status']): Promise<void> {
   await db.words.update(id, { status, lastReviewedAt: new Date() });
 }
@@ -51,9 +60,12 @@ export async function updateWordStatus(id: string, status: Word['status']): Prom
 export async function incrementWrongCount(id: string): Promise<void> {
   const word = await db.words.get(id);
   if (word) {
-    await db.words.update(id, { 
-      wrongCount: word.wrongCount + 1,
-      status: 'problem',
+    const newWrong = word.wrongCount + 1;
+    const newCorrect = word.correctCount;
+    const status = statusFromProgress(newCorrect, newWrong);
+    await db.words.update(id, {
+      wrongCount: newWrong,
+      status,
       lastReviewedAt: new Date(),
     });
   }
@@ -62,9 +74,12 @@ export async function incrementWrongCount(id: string): Promise<void> {
 export async function incrementCorrectCount(id: string): Promise<void> {
   const word = await db.words.get(id);
   if (word) {
-    await db.words.update(id, { 
-      correctCount: word.correctCount + 1,
-      status: 'known',
+    const newCorrect = word.correctCount + 1;
+    const newWrong = word.wrongCount;
+    const status = statusFromProgress(newCorrect, newWrong);
+    await db.words.update(id, {
+      correctCount: newCorrect,
+      status,
       lastReviewedAt: new Date(),
     });
   }
