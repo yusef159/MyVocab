@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
-import { getSavedSession, saveSession, clearSavedSession } from '../lib/flashcardSessionStorage';
+import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize } from '../lib/flashcardSessionStorage';
 
 // Text-to-speech: speak a word or phrase in English
 function speakText(text: string) {
@@ -27,6 +27,8 @@ function shuffleArray<T>(array: T[]): T[] {
 type FilterType = 'all' | 'new' | 'problem' | 'date';
 
 const DATE_OPTIONS = [
+  { label: 'Today', days: 0 },
+  { label: 'Today And Yesterday', days: 2 },
   { label: 'Last Week', days: 7 },
   { label: 'Last Month', days: 30 },
   { label: 'Last 2 Months', days: 60 },
@@ -65,9 +67,17 @@ function filterWords(
       const maxProgress = problemProgressThreshold / 100;
       return problemWords.filter(w => getWordProgress(w) < maxProgress);
     }
-    case 'date':
-      const cutoff = new Date(now.getTime() - dateRange * 24 * 60 * 60 * 1000);
+    case 'date': {
+      const cutoff =
+        dateRange === 0
+          ? (() => {
+              const startOfToday = new Date(now);
+              startOfToday.setHours(0, 0, 0, 0);
+              return startOfToday;
+            })()
+          : new Date(now.getTime() - dateRange * 24 * 60 * 60 * 1000);
       return words.filter(w => new Date(w.createdAt) >= cutoff);
+    }
     default:
       return words;
   }
@@ -81,6 +91,7 @@ export default function Flashcards() {
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [dateRange, setDateRange] = useState(30);
   const [problemProgressThreshold, setProblemProgressThreshold] = useState<ProblemProgressThreshold>(100);
+  const [sessionSize, setSessionSize] = useState(getSavedSessionSize);
 
   // Flashcard session state
   const [shuffledWords, setShuffledWords] = useState<Word[]>([]);
@@ -97,6 +108,10 @@ export default function Flashcards() {
   useEffect(() => {
     loadWords();
   }, [loadWords]);
+
+  useEffect(() => {
+    saveSessionSize(sessionSize);
+  }, [sessionSize]);
 
   // Auto-speak word when card changes (if not muted)
   useEffect(() => {
@@ -125,13 +140,20 @@ export default function Flashcards() {
         threshold: opt.value,
         count: words.filter(w => w.status === 'problem' && getWordProgress(w) < opt.value / 100).length,
       })),
-      date: DATE_OPTIONS.map(opt => ({
-        days: opt.days,
-        count: words.filter(w => {
-          const cutoff = new Date(now.getTime() - opt.days * 24 * 60 * 60 * 1000);
-          return new Date(w.createdAt) >= cutoff;
-        }).length,
-      })),
+      date: DATE_OPTIONS.map(opt => {
+        const cutoff =
+          opt.days === 0
+            ? (() => {
+                const startOfToday = new Date(now);
+                startOfToday.setHours(0, 0, 0, 0);
+                return startOfToday;
+              })()
+            : new Date(now.getTime() - opt.days * 24 * 60 * 60 * 1000);
+        return {
+          days: opt.days,
+          count: words.filter(w => new Date(w.createdAt) >= cutoff).length,
+        };
+      }),
     };
   }, [words]);
 
@@ -141,37 +163,44 @@ export default function Flashcards() {
     setIsFlipped(!isFlipped);
   };
 
-  const moveToNext = useCallback(() => {
-    if (currentIndex < shuffledWords.length - 1) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      setIsFlipped(false);
-      saveSession({
-        wordIds: shuffledWords.map(w => w.id),
-        currentIndex: nextIndex,
-        filterType,
-        dateRange,
-        savedAt: new Date().toISOString(),
-      });
-    } else {
-      setSessionComplete(true);
-      clearSavedSession();
-    }
-  }, [currentIndex, shuffledWords, filterType, dateRange]);
+  const moveToNext = useCallback(
+    (counts?: { knownCount: number; problemCount: number }) => {
+      if (currentIndex < shuffledWords.length - 1) {
+        const nextIndex = currentIndex + 1;
+        setCurrentIndex(nextIndex);
+        setIsFlipped(false);
+        saveSession({
+          wordIds: shuffledWords.map(w => w.id),
+          currentIndex: nextIndex,
+          filterType,
+          dateRange,
+          savedAt: new Date().toISOString(),
+          knownCount: counts?.knownCount ?? 0,
+          problemCount: counts?.problemCount ?? 0,
+        });
+      } else {
+        setSessionComplete(true);
+        clearSavedSession();
+      }
+    },
+    [currentIndex, shuffledWords, filterType, dateRange]
+  );
 
   const handleKnow = async () => {
     if (currentWord) {
-      setSessionKnownCount(c => c + 1);
+      const nextKnown = sessionKnownCount + 1;
+      setSessionKnownCount(nextKnown);
       await markAsKnown(currentWord.id);
-      moveToNext();
+      moveToNext({ knownCount: nextKnown, problemCount: sessionProblemCount });
     }
   };
 
   const handleDontKnow = async () => {
     if (currentWord) {
-      setSessionProblemCount(c => c + 1);
+      const nextProblem = sessionProblemCount + 1;
+      setSessionProblemCount(nextProblem);
       await markAsProblem(currentWord.id);
-      moveToNext();
+      moveToNext({ knownCount: sessionKnownCount, problemCount: nextProblem });
     }
   };
 
@@ -209,7 +238,9 @@ export default function Flashcards() {
       filterType === 'problem' ? problemProgressThreshold : undefined
     );
     if (filtered.length > 0) {
-      const shuffled = shuffleArray(filtered);
+      const requested = Math.max(1, Number(sessionSize) || 20);
+      const takeCount = Math.min(requested, filtered.length);
+      const shuffled = shuffleArray(filtered).slice(0, takeCount);
       setShuffledWords(shuffled);
       setCurrentIndex(0);
       setIsFlipped(false);
@@ -223,6 +254,8 @@ export default function Flashcards() {
         filterType,
         dateRange,
         savedAt: new Date().toISOString(),
+        knownCount: 0,
+        problemCount: 0,
       });
     }
   };
@@ -239,7 +272,9 @@ export default function Flashcards() {
       dateRange,
       filterType === 'problem' ? problemProgressThreshold : undefined
     );
-    setShuffledWords(shuffleArray(filtered));
+    const requested = Math.max(1, Number(sessionSize) || 20);
+    const takeCount = Math.min(requested, filtered.length);
+    setShuffledWords(shuffleArray(filtered).slice(0, takeCount));
     setCurrentIndex(0);
     setIsFlipped(false);
     setSessionComplete(false);
@@ -269,6 +304,14 @@ export default function Flashcards() {
     }
   };
 
+  // Number of words we'll actually use: default 20, clamped to 1..available
+  const getEffectiveSessionSize = () => {
+    const available = getSelectedFilterCount();
+    if (available === 0) return 0;
+    const requested = Math.max(1, Number(sessionSize) || 20);
+    return Math.min(requested, available);
+  };
+
   // Validated saved session for "Continue last session" (only when on options screen)
   const resumableSession = useMemo(() => {
     const saved = getSavedSession();
@@ -278,7 +321,13 @@ export default function Flashcards() {
     if (ordered.length === 0) return null;
     const index = Math.min(Math.max(0, saved.currentIndex), ordered.length - 1);
     const cardsLeft = ordered.length - index;
-    return { words: ordered, currentIndex: index, cardsLeft };
+    return {
+      words: ordered,
+      currentIndex: index,
+      cardsLeft,
+      knownCount: saved.knownCount,
+      problemCount: saved.problemCount,
+    };
   }, [words]);
 
   const continueLastSession = () => {
@@ -287,8 +336,8 @@ export default function Flashcards() {
     setCurrentIndex(resumableSession.currentIndex);
     setIsFlipped(false);
     setSessionComplete(false);
-    setSessionKnownCount(0);
-    setSessionProblemCount(0);
+    setSessionKnownCount(resumableSession.knownCount);
+    setSessionProblemCount(resumableSession.problemCount);
     setSessionStarted(true);
   };
 
@@ -508,6 +557,35 @@ export default function Flashcards() {
             </label>
           </div>
 
+          {/* Number of words */}
+          <div className="mt-4 p-4 rounded-lg border border-gray-600 bg-gray-700/30">
+            <label className="block text-white font-medium mb-2">Number of words</label>
+            <p className="text-gray-400 text-sm mb-3">
+              Random words per session (applies to All, New, Problem, and By Date). Default 20.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                type="number"
+                min={1}
+                value={sessionSize}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setSessionSize(Number.isNaN(v) || v < 1 ? 20 : v);
+                }}
+                onBlur={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (Number.isNaN(v) || v < 1) setSessionSize(20);
+                }}
+                className="w-24 bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <span className="text-gray-400 text-sm">
+                {getSelectedFilterCount() > 0
+                  ? `Session will use ${getEffectiveSessionSize()} of ${getSelectedFilterCount()} available`
+                  : 'Select a filter above'}
+              </span>
+            </div>
+          </div>
+
           {/* Start Button */}
           <button
             onClick={startSession}
@@ -519,7 +597,7 @@ export default function Flashcards() {
             }`}
           >
             {getSelectedFilterCount() > 0
-              ? `Start Session (${getSelectedFilterCount()})`
+              ? `Start Session (${getEffectiveSessionSize()} ${getEffectiveSessionSize() === 1 ? 'word' : 'words'})`
               : 'No words match this filter'}
           </button>
         </div>

@@ -375,7 +375,9 @@ export default function WordList() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredWords.map((word) => (
+          {filteredWords.map((word) => {
+            const learningPct = calculateLearningPercentage(word.correctCount, word.wrongCount);
+            return (
             <div
               key={word.id}
               className="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors"
@@ -412,9 +414,29 @@ export default function WordList() {
                   </div>
 
                   {/* Example Sentence */}
-                  <p className="text-gray-400 italic text-sm">
+                  <p className="text-gray-400 italic text-sm mb-3">
                     "{highlightWord(word.exampleSentence, word.english)}"
                   </p>
+
+                  {/* Learning Progress */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500 text-xs uppercase tracking-wide">Learning progress</span>
+                    <div className="flex-1 max-w-[120px] h-2 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          learningPct >= 80 ? 'bg-emerald-500' :
+                          learningPct >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${learningPct}%` }}
+                      />
+                    </div>
+                    <span className={`text-sm font-medium tabular-nums ${
+                      learningPct >= 80 ? 'text-emerald-400' :
+                      learningPct >= 40 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
+                      {learningPct}%
+                    </span>
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
@@ -440,7 +462,8 @@ export default function WordList() {
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
 

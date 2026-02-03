@@ -5,7 +5,6 @@ import WordGenerator from './components/WordGenerator';
 import ManualInput from './components/ManualInput';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
-import ProblemDeck from './components/ProblemDeck';
 import { useVocabStore } from './stores/vocabStore';
 
 function App() {
@@ -87,18 +86,6 @@ function App() {
             >
               Flashcards
             </NavLink>
-            <NavLink
-              to="/problems"
-              className={({ isActive }) =>
-                `px-4 py-2 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
-                }`
-              }
-            >
-              Problem Words
-            </NavLink>
           </div>
         </div>
       </nav>
@@ -110,7 +97,6 @@ function App() {
           <Route path="/manual" element={<ManualInput />} />
           <Route path="/words" element={<WordList />} />
           <Route path="/flashcards" element={<Flashcards />} />
-          <Route path="/problems" element={<ProblemDeck />} />
         </Routes>
       </main>
     </div>
