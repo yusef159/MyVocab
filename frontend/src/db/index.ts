@@ -11,13 +11,26 @@ db.version(1).stores({
   streakData: 'id',
 });
 
+// Migration: Add streak property to existing words
+db.version(2).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+}).upgrade(async (tx) => {
+  const words = await tx.table('words').toArray();
+  await Promise.all(words.map(word => {
+    if (!('streak' in word) || typeof word.streak !== 'number') {
+      return tx.table('words').update(word.id, { streak: 0 });
+    }
+  }));
+});
+
 // Word operations
 export async function wordExists(english: string): Promise<boolean> {
   const existing = await db.words.where('english').equalsIgnoreCase(english).first();
   return !!existing;
 }
 
-export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount' | 'correctCount' | 'status'>): Promise<{ id: string | null; isDuplicate: boolean }> {
+export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount' | 'correctCount' | 'status' | 'streak'>): Promise<{ id: string | null; isDuplicate: boolean }> {
   // Check if word already exists (case-insensitive)
   const exists = await wordExists(word.english);
   if (exists) {
@@ -31,6 +44,7 @@ export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount'
     status: 'new',
     wrongCount: 0,
     correctCount: 0,
+    streak: 0,
     createdAt: new Date(),
   });
   return { id, isDuplicate: false };
@@ -44,15 +58,6 @@ export async function getWordsByStatus(status: Word['status']): Promise<Word[]> 
   return db.words.where('status').equals(status).toArray();
 }
 
-const KNOWN_PROGRESS_THRESHOLD = 0.8; // 80%
-
-function statusFromProgress(correctCount: number, wrongCount: number): Word['status'] {
-  const total = correctCount + wrongCount;
-  if (total === 0) return 'new';
-  const progress = correctCount / total;
-  return progress > KNOWN_PROGRESS_THRESHOLD ? 'known' : 'problem';
-}
-
 export async function updateWordStatus(id: string, status: Word['status']): Promise<void> {
   await db.words.update(id, { status, lastReviewedAt: new Date() });
 }
@@ -62,10 +67,29 @@ export async function incrementWrongCount(id: string): Promise<void> {
   if (word) {
     const newWrong = word.wrongCount + 1;
     const newCorrect = word.correctCount;
-    const status = statusFromProgress(newCorrect, newWrong);
+    
+    let newStatus: Word['status'];
+    let newStreak: number;
+    
+    if (word.status === 'new') {
+      // New word: if wrong → status becomes "problem"
+      newStatus = 'problem';
+      newStreak = 0;
+    } else if (word.status === 'problem') {
+      // Problem word: reset streak to 0, keep status as "problem"
+      newStatus = 'problem';
+      newStreak = 0;
+    } else {
+      // Known word: if wrong again, change back to problem and reset streak
+      newStatus = 'problem';
+      newStreak = 0;
+    }
+    
     await db.words.update(id, {
       wrongCount: newWrong,
-      status,
+      correctCount: newCorrect,
+      status: newStatus,
+      streak: newStreak,
       lastReviewedAt: new Date(),
     });
   }
@@ -76,13 +100,47 @@ export async function incrementCorrectCount(id: string): Promise<void> {
   if (word) {
     const newCorrect = word.correctCount + 1;
     const newWrong = word.wrongCount;
-    const status = statusFromProgress(newCorrect, newWrong);
+    
+    let newStatus: Word['status'];
+    let newStreak: number;
+    
+    if (word.status === 'new') {
+      // New word: if correct → status becomes "known"
+      newStatus = 'known';
+      newStreak = 0; // Known words don't need streak
+    } else if (word.status === 'problem') {
+      // Problem word: increment streak
+      const currentStreak = word.streak || 0;
+      newStreak = currentStreak + 1;
+      
+      // If streak reaches 3, change status to "known"
+      if (newStreak >= 3) {
+        newStatus = 'known';
+        newStreak = 0; // Reset streak when becoming known
+      } else {
+        newStatus = 'problem';
+      }
+    } else {
+      // Known word: keep as known, no streak needed
+      newStatus = 'known';
+      newStreak = 0;
+    }
+    
     await db.words.update(id, {
       correctCount: newCorrect,
-      status,
+      wrongCount: newWrong,
+      status: newStatus,
+      streak: newStreak,
       lastReviewedAt: new Date(),
     });
   }
+}
+
+export async function updateWordContent(
+  id: string,
+  updates: { arabicMeanings?: string[]; exampleSentence?: string }
+): Promise<void> {
+  await db.words.update(id, updates);
 }
 
 export async function deleteWord(id: string): Promise<void> {
@@ -125,6 +183,7 @@ export async function bulkAddWords(words: Array<{
     status: 'new' as const,
     wrongCount: 0,
     correctCount: 0,
+    streak: 0,
     createdAt: new Date(),
   }));
 
@@ -165,8 +224,23 @@ export async function getStreakData(): Promise<StreakData> {
       currentStreak: 0,
       longestStreak: 0,
       lastActivityDate: '',
+      reviewsToday: 0,
+      reviewsDate: '',
     };
     await db.streakData.add(streak);
+  }
+  // Migration: add reviewsToday and reviewsDate if they don't exist
+  let needsUpdate = false;
+  if (typeof streak.reviewsToday !== 'number') {
+    streak.reviewsToday = 0;
+    needsUpdate = true;
+  }
+  if (!streak.reviewsDate) {
+    streak.reviewsDate = '';
+    needsUpdate = true;
+  }
+  if (needsUpdate) {
+    await db.streakData.put(streak);
   }
   return streak;
 }
@@ -175,30 +249,54 @@ export async function updateStreak(): Promise<StreakData> {
   const today = new Date().toISOString().split('T')[0];
   const streak = await getStreakData();
 
-  if (streak.lastActivityDate === today) {
-    return streak; // Already logged today
+  let reviewsToday = streak.reviewsToday || 0;
+  let reviewsDate = streak.reviewsDate || '';
+  
+  // If it's a new day, reset reviewsToday
+  if (reviewsDate !== today) {
+    reviewsToday = 0;
+    reviewsDate = today;
   }
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  // Increment reviews today
+  reviewsToday += 1;
 
-  let newCurrentStreak: number;
-  if (streak.lastActivityDate === yesterdayStr) {
-    // Consecutive day - increment streak
-    newCurrentStreak = streak.currentStreak + 1;
-  } else {
-    // Streak broken - reset to 1
-    newCurrentStreak = 1;
+  // If reviews reach 20 today, increment the streak
+  if (reviewsToday === 20) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    let newCurrentStreak: number;
+    // lastActivityDate tracks the last day the streak was incremented (i.e., last day with 20+ reviews)
+    if (streak.lastActivityDate === yesterdayStr) {
+      // Consecutive day - increment streak
+      newCurrentStreak = streak.currentStreak + 1;
+    } else {
+      // Streak broken or first day - start/reset to 1
+      newCurrentStreak = 1;
+    }
+    
+    const newLongestStreak = Math.max(streak.longestStreak, newCurrentStreak);
+    
+    const updatedStreak = {
+      ...streak,
+      currentStreak: newCurrentStreak,
+      longestStreak: newLongestStreak,
+      lastActivityDate: today, // Update to today since we completed 20 reviews
+      reviewsToday,
+      reviewsDate,
+    };
+    
+    await db.streakData.put(updatedStreak);
+    return updatedStreak;
   }
 
-  const newLongestStreak = Math.max(streak.longestStreak, newCurrentStreak);
-
+  // Update reviewsToday but don't increment streak yet
   const updatedStreak = {
     ...streak,
-    currentStreak: newCurrentStreak,
-    longestStreak: newLongestStreak,
-    lastActivityDate: today,
+    reviewsToday,
+    reviewsDate,
   };
 
   await db.streakData.put(updatedStreak);

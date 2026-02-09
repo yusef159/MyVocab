@@ -2,9 +2,19 @@ import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
 
+const WORD_LEVELS: readonly { value: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'; label: string }[] = [
+  { value: 'A1', label: 'A1' },
+  { value: 'A2', label: 'A2' },
+  { value: 'B1', label: 'B1' },
+  { value: 'B2', label: 'B2' },
+  { value: 'C1', label: 'C1' },
+  { value: 'C2', label: 'C2' },
+];
+
 export default function WordGenerator() {
   const [count, setCount] = useState(5);
   const [topic, setTopic] = useState('');
+  const [level, setLevel] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'>('B2');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -19,7 +29,7 @@ export default function WordGenerator() {
 
   const handleGenerate = () => {
     setCurrentIndex(0);
-    generateWords(count, topic || undefined);
+    generateWords(count, topic || undefined, level);
   };
 
   useEffect(() => {
@@ -75,15 +85,44 @@ export default function WordGenerator() {
           {/* Topic Input */}
           <div className="mb-6">
             <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
-              Topic (Optional)
+              Topic
             </label>
             <input
               type="text"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g., technology, travel, food..."
+              placeholder="e.g. technology, travel, food (optional)"
               className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
             />
+          </div>
+
+          {/* Word Level */}
+          <div className="mb-6">
+            <span className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
+              Word level
+            </span>
+            <div className="flex flex-wrap gap-3">
+              {WORD_LEVELS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    level === opt.value
+                      ? 'border-emerald-500 bg-emerald-500/20 text-white'
+                      : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="wordLevel"
+                    value={opt.value}
+                    checked={level === opt.value}
+                    onChange={() => setLevel(opt.value)}
+                    className="sr-only"
+                  />
+                  <span className="font-medium">{opt.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Error Message */}

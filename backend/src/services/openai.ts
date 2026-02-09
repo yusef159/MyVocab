@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { generateWordsPrompt, suggestMeaningsPrompt } from '../prompts/wordGeneration.js';
+import { generateWordsPrompt, suggestMeaningsPrompt, type WordLevel } from '../prompts/wordGeneration.js';
 
 let openaiClient: OpenAI | null = null;
 
@@ -23,9 +23,10 @@ export interface WordSuggestion {
 
 export async function generateWords(
   count: number,
-  topic?: string
+  topic?: string,
+  level?: WordLevel
 ): Promise<WordSuggestion[]> {
-  const prompt = generateWordsPrompt(count, topic);
+  const prompt = generateWordsPrompt(count, topic, level ?? 'B2');
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
@@ -46,8 +47,10 @@ export async function generateWords(
   }
 
   try {
-    const parsed = JSON.parse(content);
-    return parsed as WordSuggestion[];
+    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(raw);
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    return arr as WordSuggestion[];
   } catch (error) {
     console.error('Failed to parse OpenAI response:', content);
     throw new Error('Failed to parse AI response');
@@ -76,7 +79,8 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
   }
 
   try {
-    const parsed = JSON.parse(content);
+    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(raw);
     return parsed as WordSuggestion;
   } catch (error) {
     console.error('Failed to parse OpenAI response:', content);

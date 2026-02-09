@@ -12,6 +12,7 @@ import {
   getWordStats,
   getStreakData,
   updateStreak,
+  updateWordContent as dbUpdateWordContent,
 } from '../db';
 
 // Use relative URL since frontend is served from the same server as the API
@@ -43,7 +44,7 @@ interface VocabState {
   loadStats: () => Promise<void>;
   loadStreak: () => Promise<void>;
   
-  generateWords: (count: number, topic?: string) => Promise<void>;
+  generateWords: (count: number, topic?: string, level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2') => Promise<void>;
   suggestMeanings: (word: string) => Promise<void>;
   clearSuggestions: () => void;
   
@@ -59,6 +60,7 @@ interface VocabState {
   markProblemAsKnown: (id: string) => Promise<void>;
   markProblemAsStillProblem: (id: string) => Promise<void>;
   removeWord: (id: string) => Promise<void>;
+  updateWordContent: (id: string, arabicMeanings: string[], exampleSentence: string) => Promise<void>;
   importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentence: string }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
 }
 
@@ -110,12 +112,13 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  generateWords: async (count, topic) => {
+  generateWords: async (count, topic, level) => {
     set({ isSuggestingLoading: true, error: null, suggestions: [] });
     try {
       const response = await axios.post(`${API_URL}/api/words/generate`, {
         count,
         topic: topic || undefined,
+        level: level || 'B2',
       });
       set({ suggestions: response.data.words, isSuggestingLoading: false });
     } catch (error) {
@@ -214,6 +217,16 @@ export const useVocabStore = create<VocabState>((set, get) => ({
       await get().loadStats();
     } catch (error) {
       set({ error: 'Failed to delete word' });
+    }
+  },
+
+  updateWordContent: async (id, arabicMeanings, exampleSentence) => {
+    try {
+      await dbUpdateWordContent(id, { arabicMeanings, exampleSentence });
+      await get().loadWords();
+      await get().loadProblemWords();
+    } catch (error) {
+      set({ error: 'Failed to update word' });
     }
   },
 

@@ -43,100 +43,346 @@ function calculateLearningPercentage(correctCount: number, wrongCount: number): 
   return Math.round((correctCount / total) * 100);
 }
 
+type WordInfoModalMode = 'view' | 'edit' | 'suggest';
+
 interface WordInfoModalProps {
-  word: Word;
+  wordId: string | null;
   onClose: () => void;
 }
 
-function WordInfoModal({ word, onClose }: WordInfoModalProps) {
+function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
+  const word = useVocabStore((s) => (wordId ? s.words.find((w) => w.id === wordId) ?? null : null));
+  const { updateWordContent, suggestMeanings, clearSuggestions } = useVocabStore();
+  const suggestions = useVocabStore((s) => s.suggestions);
+  const isSuggestingLoading = useVocabStore((s) => s.isSuggestingLoading);
+
+  const [mode, setMode] = useState<WordInfoModalMode>('view');
+  const [editMeanings, setEditMeanings] = useState<string[]>([]);
+  const [editSentence, setEditSentence] = useState('');
+  const [selectedMeaningIndices, setSelectedMeaningIndices] = useState<number[]>([]);
+  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (!wordId) return;
+    if (word) {
+      setEditMeanings([...word.arabicMeanings]);
+      setEditSentence(word.exampleSentence);
+    }
+  }, [wordId, word?.id, word?.arabicMeanings, word?.exampleSentence]);
+
+  useEffect(() => {
+    if (mode !== 'suggest') clearSuggestions();
+  }, [mode, clearSuggestions]);
+
+  const handleGetSuggestions = async () => {
+    if (!word) return;
+    setMode('suggest');
+    setSelectedMeaningIndices([]);
+    setSelectedSentenceIndex(0);
+    await suggestMeanings(word.english);
+  };
+
+  useEffect(() => {
+    if (mode === 'suggest' && suggestions[0]) {
+      setSelectedMeaningIndices((prev) => (prev.length === 0 ? [0] : prev));
+      setSelectedSentenceIndex((prev) => (suggestions[0].exampleSentences[prev] === undefined ? 0 : prev));
+    }
+  }, [mode, suggestions]);
+
+  const handleSaveEdit = async () => {
+    if (!word) return;
+    const meanings = editMeanings.filter((m) => m.trim());
+    if (meanings.length === 0 || !editSentence.trim()) return;
+    await updateWordContent(word.id, meanings, editSentence.trim());
+    setMode('view');
+  };
+
+  const handleApplySuggestions = async () => {
+    if (!word) return;
+    const s = suggestions[0];
+    if (!s || selectedMeaningIndices.length === 0 || !s.exampleSentences[selectedSentenceIndex]) return;
+    const meanings = selectedMeaningIndices.map((i) => s.arabicMeanings[i]).filter(Boolean);
+    const sentence = s.exampleSentences[selectedSentenceIndex];
+    await updateWordContent(word.id, meanings, sentence);
+    setMode('view');
+    clearSuggestions();
+  };
+
+  const addMeaningField = () => setEditMeanings((prev) => [...prev, '']);
+  const removeMeaningField = (index: number) => setEditMeanings((prev) => prev.filter((_, i) => i !== index));
+  const setMeaningAt = (index: number, value: string) =>
+    setEditMeanings((prev) => prev.map((m, i) => (i === index ? value : m)));
+
+  const toggleMeaningIndex = (index: number) => {
+    setSelectedMeaningIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
+    );
+  };
+
+  if (!wordId || !word) return null;
+
   const learningPercentage = calculateLearningPercentage(word.correctCount, word.wrongCount);
   const totalReviews = word.correctCount + word.wrongCount;
+  const suggestion = suggestions[0];
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
-        className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700"
+      <div
+        className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-white">{word.english}</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Learning Progress */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-400 text-sm">Learning Progress</span>
-            <span className={`font-bold ${
-              learningPercentage >= 70 ? 'text-emerald-400' : 
-              learningPercentage >= 40 ? 'text-yellow-400' : 'text-red-400'
-            }`}>
-              {learningPercentage}%
-            </span>
-          </div>
-          <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                learningPercentage >= 70 ? 'bg-emerald-500' : 
-                learningPercentage >= 40 ? 'bg-yellow-500' : 'bg-red-500'
-              }`}
-              style={{ width: `${learningPercentage}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-gray-700/50 rounded-lg p-4">
-            <p className="text-gray-400 text-xs uppercase tracking-wide">Known Count</p>
-            <p className="text-2xl font-bold text-emerald-400">{word.correctCount}</p>
-          </div>
-          <div className="bg-gray-700/50 rounded-lg p-4">
-            <p className="text-gray-400 text-xs uppercase tracking-wide">Didn't Know</p>
-            <p className="text-2xl font-bold text-red-400">{word.wrongCount}</p>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Total Reviews</span>
-            <span className="text-white">{totalReviews}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Status</span>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-              word.status === 'known' ? 'bg-emerald-500/20 text-emerald-400' :
-              word.status === 'problem' ? 'bg-red-500/20 text-red-400' :
-              'bg-blue-500/20 text-blue-400'
-            }`}>
-              {word.status.charAt(0).toUpperCase() + word.status.slice(1)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Date Added</span>
-            <span className="text-white">{formatDate(word.createdAt)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Recent Review</span>
-            <span className={word.lastReviewedAt ? 'text-white' : 'text-gray-500'}>
-              {word.lastReviewedAt ? formatDate(word.lastReviewedAt) : 'Not reviewed yet'}
-            </span>
-          </div>
-          {word.topic && (
-            <div className="flex justify-between">
-              <span className="text-gray-400">Topic</span>
-              <span className="text-white">{word.topic}</span>
+        {mode === 'view' && (
+          <>
+            {/* Meanings & sentence in view */}
+            <div className="mb-4">
+              <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Arabic meanings</p>
+              <div className="bg-gray-700/50 rounded-lg p-3" dir="rtl">
+                {word.arabicMeanings.map((m, i) => (
+                  <p key={i} className="text-white text-lg">
+                    {m}
+                  </p>
+                ))}
+              </div>
+              <p className="text-gray-400 text-xs uppercase tracking-wide mt-2 mb-1">Example sentence</p>
+              <p className="text-gray-200 italic">"{word.exampleSentence}"</p>
             </div>
-          )}
-        </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 mb-6">
+              <button
+                type="button"
+                onClick={() => setMode('edit')}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-200 hover:bg-gray-700 transition-colors text-sm font-medium"
+              >
+                Edit manually
+              </button>
+              <button
+                type="button"
+                onClick={handleGetSuggestions}
+                className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition-colors text-sm font-medium"
+              >
+                Get AI suggestions
+              </button>
+            </div>
+          </>
+        )}
+
+        {mode === 'edit' && (
+          <div className="mb-6">
+            <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Arabic meanings</p>
+            <div className="space-y-2 mb-4">
+              {editMeanings.map((m, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={m}
+                    onChange={(e) => setMeaningAt(i, e.target.value)}
+                    className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2"
+                    dir="rtl"
+                    placeholder="Meaning"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeMeaningField(i)}
+                    className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg"
+                    title="Remove"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addMeaningField}
+                className="text-sm text-emerald-400 hover:underline"
+              >
+                + Add meaning
+              </button>
+            </div>
+            <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Example sentence</p>
+            <textarea
+              value={editSentence}
+              onChange={(e) => setEditSentence(e.target.value)}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2 min-h-[80px]"
+              placeholder="Example sentence"
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setMode('view')}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={editMeanings.every((m) => !m.trim()) || !editSentence.trim()}
+                className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'suggest' && (
+          <div className="mb-6">
+            {isSuggestingLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <svg className="animate-spin h-8 w-8 text-amber-500" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            ) : suggestion ? (
+              <>
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">
+                  Select Arabic Meaning(s) <span className="text-amber-400">• Select one or more</span>
+                </p>
+                <div className="space-y-2 mb-4">
+                  {suggestion.arabicMeanings.map((m, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => toggleMeaningIndex(i)}
+                      className={`w-full text-right p-3 rounded-lg border transition-all flex items-center justify-between ${
+                        selectedMeaningIndices.includes(i)
+                          ? 'border-amber-500 bg-amber-500/20 text-white'
+                          : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
+                      }`}
+                      dir="rtl"
+                    >
+                      <span className="text-base">{m}</span>
+                      {selectedMeaningIndices.includes(i) && (
+                        <span className="text-amber-400 ml-2">✓</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {selectedMeaningIndices.length > 0 && (
+                  <p className="text-amber-400 text-sm mb-4">
+                    {selectedMeaningIndices.length} meaning{selectedMeaningIndices.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Select Example Sentence</p>
+                <div className="space-y-2 mb-4">
+                  {suggestion.exampleSentences.map((sent, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedSentenceIndex(i)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${
+                        selectedSentenceIndex === i
+                          ? 'border-amber-500 bg-amber-500/20 text-white'
+                          : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
+                      }`}
+                    >
+                      <span className="text-sm">"{sent}"</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setMode('view'); clearSuggestions(); }}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplySuggestions}
+                    disabled={selectedMeaningIndices.length === 0}
+                    className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-400 py-4">No suggestions. Try again.</p>
+            )}
+          </div>
+        )}
+
+        {/* Learning Progress - show in view mode only */}
+        {mode === 'view' && (
+          <>
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-400 text-sm">Learning Progress</span>
+                <span className={`font-bold ${learningPercentage >= 70 ? 'text-emerald-400' : learningPercentage >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                  {learningPercentage}%
+                </span>
+              </div>
+              <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${learningPercentage >= 70 ? 'bg-emerald-500' : learningPercentage >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                  style={{ width: `${learningPercentage}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-gray-700/50 rounded-lg p-4">
+                <p className="text-gray-400 text-xs uppercase tracking-wide">Known Count</p>
+                <p className="text-2xl font-bold text-emerald-400">{word.correctCount}</p>
+              </div>
+              <div className="bg-gray-700/50 rounded-lg p-4">
+                <p className="text-gray-400 text-xs uppercase tracking-wide">Didn't Know</p>
+                <p className="text-2xl font-bold text-red-400">{word.wrongCount}</p>
+              </div>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Total Reviews</span>
+                <span className="text-white">{totalReviews}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Status</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${word.status === 'known' ? 'bg-emerald-500/20 text-emerald-400' : word.status === 'problem' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                  {word.status.charAt(0).toUpperCase() + word.status.slice(1)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Date Added</span>
+                <span className="text-white">{formatDate(word.createdAt)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Recent Review</span>
+                <span className={word.lastReviewedAt ? 'text-white' : 'text-gray-500'}>
+                  {word.lastReviewedAt ? formatDate(word.lastReviewedAt) : 'Not reviewed yet'}
+                </span>
+              </div>
+              {word.status === 'problem' && (word.streak || 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Streak</span>
+                  <span className="text-white flex items-center gap-1">
+                    <span>🔥</span>
+                    <span>{word.streak}/3</span>
+                  </span>
+                </div>
+              )}
+              {word.topic && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Topic</span>
+                  <span className="text-white">{word.topic}</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -144,7 +390,7 @@ function WordInfoModal({ word, onClose }: WordInfoModalProps) {
 
 export default function WordList() {
   const { words, isLoading, loadWords, removeWord, importWords } = useVocabStore();
-  const [selectedWord, setSelectedWord] = useState<Word | null>(null);
+  const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
   const [wordToDelete, setWordToDelete] = useState<Word | null>(null);
@@ -436,13 +682,20 @@ export default function WordList() {
                     }`}>
                       {learningPct}%
                     </span>
+                    {/* Fire Streak Icon - only show for problem words with streak > 0 */}
+                    {word.status === 'problem' && (word.streak || 0) > 0 && (
+                      <div className="flex items-center gap-1" title={`Streak: ${word.streak}/3`}>
+                        <span className="text-lg">🔥</span>
+                        <span className="text-orange-500 font-bold text-sm">{word.streak}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 flex-shrink-0">
                   <button
-                    onClick={() => setSelectedWord(word)}
+                    onClick={() => setSelectedWordId(word.id)}
                     className="p-2 rounded-full bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition-colors"
                     title="View details"
                   >
@@ -468,8 +721,8 @@ export default function WordList() {
       )}
 
       {/* Info Modal */}
-      {selectedWord && (
-        <WordInfoModal word={selectedWord} onClose={() => setSelectedWord(null)} />
+      {selectedWordId && (
+        <WordInfoModal wordId={selectedWordId} onClose={() => setSelectedWordId(null)} />
       )}
 
       {/* Delete Confirmation Modal */}

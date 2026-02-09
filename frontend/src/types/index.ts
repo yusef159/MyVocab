@@ -9,6 +9,7 @@ export interface Word {
   status: WordStatus;
   wrongCount: number;
   correctCount: number;
+  streak: number;  // Streak counter for problem words (0-3)
   createdAt: Date;
   lastReviewedAt?: Date;
 }
@@ -17,7 +18,9 @@ export interface StreakData {
   id: string;
   currentStreak: number;
   longestStreak: number;
-  lastActivityDate: string;
+  lastActivityDate: string; // Last day streak was incremented (last day with 20+ reviews)
+  reviewsToday: number; // Number of word reviews today (can be same word multiple times)
+  reviewsDate: string; // The date that reviewsToday belongs to
 }
 
 export interface WordSuggestion {

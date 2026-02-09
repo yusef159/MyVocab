@@ -7,6 +7,7 @@ const router = Router();
 const generateSchema = z.object({
   count: z.number().min(1).max(20),
   topic: z.string().optional(),
+  level: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']).optional(),
 });
 
 const suggestSchema = z.object({
@@ -23,8 +24,8 @@ router.post('/generate', async (req, res) => {
       });
     }
 
-    const { count, topic } = validation.data;
-    const words = await generateWords(count, topic);
+    const { count, topic, level } = validation.data;
+    const words = await generateWords(count, topic, level);
     
     res.json({ words });
   } catch (error) {

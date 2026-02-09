@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
-import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize } from '../lib/flashcardSessionStorage';
+import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize, saveLastCompletedSession, getLastCompletedSession } from '../lib/flashcardSessionStorage';
 
 // Text-to-speech: speak a word or phrase in English
 function speakText(text: string) {
@@ -25,6 +25,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 type FilterType = 'all' | 'new' | 'problem' | 'date';
+type ProblemProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
 
 const DATE_OPTIONS = [
   { label: 'Today', days: 0 },
@@ -36,18 +37,11 @@ const DATE_OPTIONS = [
   { label: 'Last 6 Months', days: 180 },
 ];
 
-type ProblemProgressThreshold = 100 | 75 | 50 | 25;
-
-const PROBLEM_PROGRESS_OPTIONS: { label: string; value: ProblemProgressThreshold }[] = [
-  { label: 'All', value: 100 },
-  { label: 'Moderate', value: 75 },
-  { label: 'Hard', value: 50 },
-  { label: 'Very Hard', value: 25 },
-];
-
-function getWordProgress(w: Word): number {
-  const total = w.correctCount + w.wrongCount;
-  return total === 0 ? 0 : w.correctCount / total;
+// Calculate learning progress percentage
+function calculateLearningPercentage(correctCount: number, wrongCount: number): number {
+  const total = correctCount + wrongCount;
+  if (total === 0) return 0;
+  return Math.round((correctCount / total) * 100);
 }
 
 // Filter words based on selection
@@ -55,17 +49,34 @@ function filterWords(
   words: Word[],
   filterType: FilterType,
   dateRange: number,
-  problemProgressThreshold?: ProblemProgressThreshold
+  problemProgressFilter?: ProblemProgressFilter
 ): Word[] {
   const now = new Date();
   switch (filterType) {
     case 'new':
       return words.filter(w => w.status === 'new');
     case 'problem': {
-      const problemWords = words.filter(w => w.status === 'problem');
-      if (problemProgressThreshold === undefined) return problemWords;
-      const maxProgress = problemProgressThreshold / 100;
-      return problemWords.filter(w => getWordProgress(w) < maxProgress);
+      // Only show words with status "problem" (not known)
+      let problemWords = words.filter(w => w.status === 'problem');
+      
+      // Apply learning progress filter if specified
+      if (problemProgressFilter && problemProgressFilter !== 'all') {
+        problemWords = problemWords.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          switch (problemProgressFilter) {
+            case 'moderate':
+              return progress >= 66 && progress < 90;
+            case 'hard':
+              return progress >= 33 && progress < 66;
+            case 'very hard':
+              return progress < 33;
+            default:
+              return true;
+          }
+        });
+      }
+      
+      return problemWords;
     }
     case 'date': {
       const cutoff =
@@ -90,8 +101,8 @@ export default function Flashcards() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [dateRange, setDateRange] = useState(30);
-  const [problemProgressThreshold, setProblemProgressThreshold] = useState<ProblemProgressThreshold>(100);
   const [sessionSize, setSessionSize] = useState(getSavedSessionSize);
+  const [problemProgressFilter, setProblemProgressFilter] = useState<ProblemProgressFilter>('all');
 
   // Flashcard session state
   const [shuffledWords, setShuffledWords] = useState<Word[]>([]);
@@ -113,6 +124,13 @@ export default function Flashcards() {
     saveSessionSize(sessionSize);
   }, [sessionSize]);
 
+  // Reset problemProgressFilter when switching away from problem filter
+  useEffect(() => {
+    if (filterType !== 'problem') {
+      setProblemProgressFilter('all');
+    }
+  }, [filterType]);
+
   // Auto-speak word when card changes (if not muted)
   useEffect(() => {
     const word = shuffledWords[currentIndex];
@@ -132,14 +150,26 @@ export default function Flashcards() {
   // Calculate word counts for each filter option
   const filterCounts = useMemo(() => {
     const now = new Date();
+    const problemWords = words.filter(w => w.status === 'problem');
     return {
       all: words.length,
       new: words.filter(w => w.status === 'new').length,
-      problem: words.filter(w => w.status === 'problem').length,
-      problemByProgress: PROBLEM_PROGRESS_OPTIONS.map(opt => ({
-        threshold: opt.value,
-        count: words.filter(w => w.status === 'problem' && getWordProgress(w) < opt.value / 100).length,
-      })),
+      problem: problemWords.length,
+      problemByProgress: {
+        all: problemWords.length,
+        moderate: problemWords.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress >= 66 && progress < 90;
+        }).length,
+        hard: problemWords.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress >= 33 && progress < 66;
+        }).length,
+        'very hard': problemWords.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress < 33;
+        }).length,
+      },
       date: DATE_OPTIONS.map(opt => {
         const cutoff =
           opt.days === 0
@@ -179,6 +209,17 @@ export default function Flashcards() {
           problemCount: counts?.problemCount ?? 0,
         });
       } else {
+        // Save completed session before clearing
+        const completedSession = {
+          wordIds: shuffledWords.map(w => w.id),
+          currentIndex: shuffledWords.length,
+          filterType,
+          dateRange,
+          savedAt: new Date().toISOString(),
+          knownCount: counts?.knownCount ?? 0,
+          problemCount: counts?.problemCount ?? 0,
+        };
+        saveLastCompletedSession(completedSession);
         setSessionComplete(true);
         clearSavedSession();
       }
@@ -235,7 +276,7 @@ export default function Flashcards() {
       words,
       filterType,
       dateRange,
-      filterType === 'problem' ? problemProgressThreshold : undefined
+      filterType === 'problem' ? problemProgressFilter : undefined
     );
     if (filtered.length > 0) {
       const requested = Math.max(1, Number(sessionSize) || 20);
@@ -263,23 +304,33 @@ export default function Flashcards() {
   const backToOptions = () => {
     setSessionStarted(false);
     setSessionComplete(false);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionKnownCount(0);
+    setSessionProblemCount(0);
   };
 
-  const restartSession = () => {
-    const filtered = filterWords(
-      words,
-      filterType,
-      dateRange,
-      filterType === 'problem' ? problemProgressThreshold : undefined
-    );
-    const requested = Math.max(1, Number(sessionSize) || 20);
-    const takeCount = Math.min(requested, filtered.length);
-    setShuffledWords(shuffleArray(filtered).slice(0, takeCount));
+  const regenerateCurrentSession = () => {
+    if (shuffledWords.length === 0) return;
+    // Shuffle the current session's words to change the order
+    const shuffled = shuffleArray(shuffledWords);
+    setShuffledWords(shuffled);
     setCurrentIndex(0);
     setIsFlipped(false);
     setSessionComplete(false);
     setSessionKnownCount(0);
     setSessionProblemCount(0);
+    setSessionStarted(true);
+    // Save as new session (with shuffled order)
+    saveSession({
+      wordIds: shuffled.map(w => w.id),
+      currentIndex: 0,
+      filterType,
+      dateRange,
+      savedAt: new Date().toISOString(),
+      knownCount: 0,
+      problemCount: 0,
+    });
   };
 
   // Get the current count for the selected date range
@@ -293,10 +344,8 @@ export default function Flashcards() {
     switch (filterType) {
       case 'new':
         return filterCounts.new;
-      case 'problem': {
-        const found = filterCounts.problemByProgress.find(p => p.threshold === problemProgressThreshold);
-        return found ? found.count : filterCounts.problem;
-      }
+      case 'problem':
+        return filterCounts.problem;
       case 'date':
         return getDateRangeCount();
       default:
@@ -330,6 +379,24 @@ export default function Flashcards() {
     };
   }, [words]);
 
+  // Get last completed session for display and regeneration
+  const lastCompletedSession = useMemo(() => {
+    const saved = getLastCompletedSession();
+    if (!saved || !saved.wordIds.length) return null;
+    const wordMap = new Map(words.map(w => [w.id, w]));
+    const ordered = saved.wordIds.map(id => wordMap.get(id)).filter(Boolean) as Word[];
+    if (ordered.length === 0) return null;
+    return {
+      words: ordered,
+      filterType: saved.filterType,
+      dateRange: saved.dateRange,
+      savedAt: saved.savedAt,
+      knownCount: saved.knownCount,
+      problemCount: saved.problemCount,
+      totalWords: ordered.length,
+    };
+  }, [words]);
+
   const continueLastSession = () => {
     if (!resumableSession) return;
     setShuffledWords(resumableSession.words);
@@ -339,6 +406,47 @@ export default function Flashcards() {
     setSessionKnownCount(resumableSession.knownCount);
     setSessionProblemCount(resumableSession.problemCount);
     setSessionStarted(true);
+  };
+
+  const regenerateLastSession = () => {
+    if (!lastCompletedSession) return;
+    // Set filter options to match the last session
+    setFilterType(lastCompletedSession.filterType);
+    setDateRange(lastCompletedSession.dateRange);
+    // Shuffle the words so the order is different each time
+    const shuffled = shuffleArray(lastCompletedSession.words);
+    setShuffledWords(shuffled);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionComplete(false);
+    setSessionKnownCount(0);
+    setSessionProblemCount(0);
+    setSessionStarted(true);
+    // Save as new session (with shuffled order)
+    saveSession({
+      wordIds: shuffled.map(w => w.id),
+      currentIndex: 0,
+      filterType: lastCompletedSession.filterType,
+      dateRange: lastCompletedSession.dateRange,
+      savedAt: new Date().toISOString(),
+      knownCount: 0,
+      problemCount: 0,
+    });
+  };
+
+  const getFilterTypeLabel = (type: FilterType): string => {
+    switch (type) {
+      case 'all': return 'All Words';
+      case 'new': return 'New Words';
+      case 'problem': return 'Problem Words';
+      case 'date': return 'By Date Added';
+      default: return 'Unknown';
+    }
+  };
+
+  const getDateRangeLabel = (days: number): string => {
+    const found = DATE_OPTIONS.find(opt => opt.days === days);
+    return found ? found.label : `${days} days`;
   };
 
   if (isLoading) {
@@ -402,6 +510,45 @@ export default function Flashcards() {
                 </div>
               </div>
             </button>
+          )}
+
+          {lastCompletedSession && (
+            <div className="mb-6 p-4 rounded-lg border-2 border-blue-500/50 bg-blue-500/10">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📋</span>
+                  <div>
+                    <span className="text-white font-semibold block">Last Completed Session</span>
+                    <span className="text-blue-200/90 text-sm">
+                      {new Date(lastCompletedSession.savedAt).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="ml-11 mb-4 space-y-1 text-sm text-gray-300">
+                <p>
+                  <span className="text-gray-400">Filter:</span> {getFilterTypeLabel(lastCompletedSession.filterType)}
+                  {lastCompletedSession.filterType === 'date' && ` (${getDateRangeLabel(lastCompletedSession.dateRange)})`}
+                </p>
+                <p>
+                  <span className="text-gray-400">Words:</span> {lastCompletedSession.totalWords}
+                </p>
+                <p>
+                  <span className="text-emerald-400">Known:</span> {lastCompletedSession.knownCount} 
+                  <span className="text-gray-500"> • </span>
+                  <span className="text-red-400">Problems:</span> {lastCompletedSession.problemCount}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={regenerateLastSession}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
+              >
+                Regenerate This Session
+              </button>
+            </div>
           )}
 
           <div className="space-y-3">
@@ -474,7 +621,10 @@ export default function Flashcards() {
                     name="filterType"
                     value="problem"
                     checked={filterType === 'problem'}
-                    onChange={() => setFilterType('problem')}
+                    onChange={() => {
+                      setFilterType('problem');
+                      setProblemProgressFilter('all');
+                    }}
                     className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
                   />
                   <div>
@@ -483,26 +633,77 @@ export default function Flashcards() {
                   </div>
                 </div>
                 <span className="text-red-400 bg-red-500/20 px-3 py-1 rounded-full text-sm">
-                  {filterType === 'problem' ? getSelectedFilterCount() : filterCounts.problem}
+                  {filterType === 'problem' && problemProgressFilter !== 'all'
+                    ? filterCounts.problemByProgress[problemProgressFilter]
+                    : filterCounts.problem}
                 </span>
               </div>
+              
               {filterType === 'problem' && (
-                <div className="mt-4 ml-7">
-                  <select
-                    value={problemProgressThreshold}
-                    onChange={(e) => setProblemProgressThreshold(Number(e.target.value) as ProblemProgressThreshold)}
-                    className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {PROBLEM_PROGRESS_OPTIONS.map((opt) => {
-                      const count = filterCounts.problemByProgress.find(p => p.threshold === opt.value)?.count ?? 0;
-                      return (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label} ({count})
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div className="mt-4 ml-7 flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
+                    <input
+                      type="radio"
+                      name="problemProgressFilter"
+                      value="all"
+                      checked={problemProgressFilter === 'all'}
+                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
+                    />
+                    <span className="text-white text-sm">All</span>
+                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                      {filterCounts.problemByProgress.all}
+                    </span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
+                    <input
+                      type="radio"
+                      name="problemProgressFilter"
+                      value="moderate"
+                      checked={problemProgressFilter === 'moderate'}
+                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
+                    />
+                    <span className="text-white text-sm">moderate</span>
+                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                      {filterCounts.problemByProgress.moderate}
+                    </span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
+                    <input
+                      type="radio"
+                      name="problemProgressFilter"
+                      value="hard"
+                      checked={problemProgressFilter === 'hard'}
+                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
+                    />
+                    <span className="text-white text-sm">hard</span>
+                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                      {filterCounts.problemByProgress.hard}
+                    </span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
+                    <input
+                      type="radio"
+                      name="problemProgressFilter"
+                      value="very hard"
+                      checked={problemProgressFilter === 'very hard'}
+                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
+                    />
+                    <span className="text-white text-sm">very hard</span>
+                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                      {filterCounts.problemByProgress['very hard']}
+                    </span>
+                  </label>
                 </div>
               )}
             </label>
@@ -659,13 +860,13 @@ export default function Flashcards() {
               onClick={backToOptions}
               className="px-6 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors"
             >
-              Change Options
+              Back to Flashcards
             </button>
             <button
-              onClick={restartSession}
+              onClick={regenerateCurrentSession}
               className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
             >
-              Restart Session
+              Regenerate Session
             </button>
           </div>
         </div>
