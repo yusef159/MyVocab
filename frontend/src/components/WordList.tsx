@@ -153,7 +153,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                 ))}
               </div>
               <p className="text-gray-400 text-xs uppercase tracking-wide mt-2 mb-1">Example sentence</p>
-              <p className="text-gray-200 italic">"{word.exampleSentence}"</p>
+              <p className="text-gray-400 italic">"{word.exampleSentence}"</p>
             </div>
 
             {/* Actions */}

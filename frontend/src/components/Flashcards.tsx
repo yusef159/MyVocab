@@ -24,8 +24,56 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+// Highlight word in sentence
+function highlightWordInSentence(sentence: string, word: string): JSX.Element {
+  if (!sentence || !word) {
+    return <>{sentence}</>;
+  }
+
+  // Create a regex that matches the word as a whole word (case-insensitive)
+  // This handles punctuation and word boundaries
+  const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+  const parts: Array<{ text: string; isHighlight: boolean }> = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(sentence)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push({ text: sentence.substring(lastIndex, match.index), isHighlight: false });
+    }
+    // Add the highlighted match
+    parts.push({ text: match[0], isHighlight: true });
+    lastIndex = regex.lastIndex;
+  }
+
+  // Add remaining text after the last match
+  if (lastIndex < sentence.length) {
+    parts.push({ text: sentence.substring(lastIndex), isHighlight: false });
+  }
+
+  // If no matches found, return the sentence as-is
+  if (parts.length === 0) {
+    return <>{sentence}</>;
+  }
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.isHighlight ? (
+          <span key={index} className="text-emerald-400">
+            {part.text}
+          </span>
+        ) : (
+          <span key={index}>{part.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
 type FilterType = 'all' | 'new' | 'problem' | 'date';
-type ProblemProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
+type ProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
 
 const DATE_OPTIONS = [
   { label: 'Today', days: 0 },
@@ -44,12 +92,31 @@ function calculateLearningPercentage(correctCount: number, wrongCount: number): 
   return Math.round((correctCount / total) * 100);
 }
 
+// Filter words based on learning progress
+function filterByProgress(words: Word[], progressFilter: ProgressFilter): Word[] {
+  if (progressFilter === 'all') return words;
+  
+  return words.filter(w => {
+    const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+    switch (progressFilter) {
+      case 'moderate':
+        return progress >= 66 && progress < 90;
+      case 'hard':
+        return progress >= 33 && progress < 66;
+      case 'very hard':
+        return progress < 33;
+      default:
+        return true;
+    }
+  });
+}
+
 // Filter words based on selection
 function filterWords(
   words: Word[],
   filterType: FilterType,
   dateRange: number,
-  problemProgressFilter?: ProblemProgressFilter
+  progressFilter?: ProgressFilter
 ): Word[] {
   const now = new Date();
   switch (filterType) {
@@ -60,23 +127,18 @@ function filterWords(
       let problemWords = words.filter(w => w.status === 'problem');
       
       // Apply learning progress filter if specified
-      if (problemProgressFilter && problemProgressFilter !== 'all') {
-        problemWords = problemWords.filter(w => {
-          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
-          switch (problemProgressFilter) {
-            case 'moderate':
-              return progress >= 66 && progress < 90;
-            case 'hard':
-              return progress >= 33 && progress < 66;
-            case 'very hard':
-              return progress < 33;
-            default:
-              return true;
-          }
-        });
+      if (progressFilter) {
+        problemWords = filterByProgress(problemWords, progressFilter);
       }
       
       return problemWords;
+    }
+    case 'all': {
+      // Apply learning progress filter if specified
+      if (progressFilter) {
+        return filterByProgress(words, progressFilter);
+      }
+      return words;
     }
     case 'date': {
       const cutoff =
@@ -95,14 +157,15 @@ function filterWords(
 }
 
 export default function Flashcards() {
-  const { words, isLoading, loadWords, markAsKnown, markAsProblem } = useVocabStore();
+  const { words, isLoading, loadWords, markAsKnown, markAsProblem, streak, loadStreak } = useVocabStore();
   
   // Session options state
   const [sessionStarted, setSessionStarted] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [dateRange, setDateRange] = useState(30);
   const [sessionSize, setSessionSize] = useState(getSavedSessionSize);
-  const [problemProgressFilter, setProblemProgressFilter] = useState<ProblemProgressFilter>('all');
+  const [problemProgressFilter, setProblemProgressFilter] = useState<ProgressFilter>('all');
+  const [allWordsProgressFilter, setAllWordsProgressFilter] = useState<ProgressFilter>('all');
 
   // Flashcard session state
   const [shuffledWords, setShuffledWords] = useState<Word[]>([]);
@@ -112,22 +175,59 @@ export default function Flashcards() {
   const [sessionKnownCount, setSessionKnownCount] = useState(0);
   const [sessionProblemCount, setSessionProblemCount] = useState(0);
 
+  // Streak notification state
+  const [showStreakMessage, setShowStreakMessage] = useState(false);
+  const [previousReviewsToday, setPreviousReviewsToday] = useState<number | null>(null);
+
   // Audio state: word auto-speak, and sentence speak (separate, default muted)
   const [isMuted, setIsMuted] = useState(false);
   const [isSentenceMuted, setIsSentenceMuted] = useState(true);
 
   useEffect(() => {
     loadWords();
-  }, [loadWords]);
+    loadStreak();
+  }, [loadWords, loadStreak]);
+
+  // Initialize previousReviewsToday when streak loads
+  useEffect(() => {
+    if (streak && previousReviewsToday === null) {
+      setPreviousReviewsToday(streak.reviewsToday || 0);
+    }
+  }, [streak, previousReviewsToday]);
+
+  // Track streak progress and show message when 20 reviews reached
+  useEffect(() => {
+    if (streak && previousReviewsToday !== null) {
+      const currentReviews = streak.reviewsToday || 0;
+      
+      // If we just hit 20 reviews (went from less than 20 to exactly 20)
+      if (previousReviewsToday < 20 && currentReviews === 20) {
+        setShowStreakMessage(true);
+        // Auto-hide after 5 seconds
+        const timer = setTimeout(() => {
+          setShowStreakMessage(false);
+        }, 5000);
+        return () => clearTimeout(timer);
+      }
+      
+      // Update previous reviews count
+      if (currentReviews !== previousReviewsToday) {
+        setPreviousReviewsToday(currentReviews);
+      }
+    }
+  }, [streak, previousReviewsToday]);
 
   useEffect(() => {
     saveSessionSize(sessionSize);
   }, [sessionSize]);
 
-  // Reset problemProgressFilter when switching away from problem filter
+  // Reset progress filters when switching away from their respective filters
   useEffect(() => {
     if (filterType !== 'problem') {
       setProblemProgressFilter('all');
+    }
+    if (filterType !== 'all') {
+      setAllWordsProgressFilter('all');
     }
   }, [filterType]);
 
@@ -155,6 +255,21 @@ export default function Flashcards() {
       all: words.length,
       new: words.filter(w => w.status === 'new').length,
       problem: problemWords.length,
+      allByProgress: {
+        all: words.length,
+        moderate: words.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress >= 66 && progress < 90;
+        }).length,
+        hard: words.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress >= 33 && progress < 66;
+        }).length,
+        'very hard': words.filter(w => {
+          const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
+          return progress < 33;
+        }).length,
+      },
       problemByProgress: {
         all: problemWords.length,
         moderate: problemWords.filter(w => {
@@ -232,6 +347,7 @@ export default function Flashcards() {
       const nextKnown = sessionKnownCount + 1;
       setSessionKnownCount(nextKnown);
       await markAsKnown(currentWord.id);
+      await loadStreak(); // Reload streak to check if we hit 20 reviews
       moveToNext({ knownCount: nextKnown, problemCount: sessionProblemCount });
     }
   };
@@ -241,6 +357,7 @@ export default function Flashcards() {
       const nextProblem = sessionProblemCount + 1;
       setSessionProblemCount(nextProblem);
       await markAsProblem(currentWord.id);
+      await loadStreak(); // Reload streak to check if we hit 20 reviews
       moveToNext({ knownCount: sessionKnownCount, problemCount: nextProblem });
     }
   };
@@ -272,11 +389,17 @@ export default function Flashcards() {
   }, [sessionStarted, sessionComplete, handleKnow, handleDontKnow, handleFlip]);
 
   const startSession = () => {
+    const progressFilter = filterType === 'problem' 
+      ? problemProgressFilter 
+      : filterType === 'all' 
+        ? allWordsProgressFilter 
+        : undefined;
+    
     const filtered = filterWords(
       words,
       filterType,
       dateRange,
-      filterType === 'problem' ? problemProgressFilter : undefined
+      progressFilter
     );
     if (filtered.length > 0) {
       const requested = Math.max(1, Number(sessionSize) || 20);
@@ -526,7 +649,7 @@ export default function Flashcards() {
                 </div>
               </div>
               
-              <div className="ml-11 mb-4 space-y-1 text-sm text-gray-300">
+              <div className="ml-11 mb-4 space-y-3 text-sm text-gray-300">
                 <p>
                   <span className="text-gray-400">Filter:</span> {getFilterTypeLabel(lastCompletedSession.filterType)}
                   {lastCompletedSession.filterType === 'date' && ` (${getDateRangeLabel(lastCompletedSession.dateRange)})`}
@@ -534,11 +657,38 @@ export default function Flashcards() {
                 <p>
                   <span className="text-gray-400">Words:</span> {lastCompletedSession.totalWords}
                 </p>
-                <p>
-                  <span className="text-emerald-400">Known:</span> {lastCompletedSession.knownCount} 
-                  <span className="text-gray-500"> • </span>
-                  <span className="text-red-400">Problems:</span> {lastCompletedSession.problemCount}
-                </p>
+                {/* Performance Bar */}
+                {(() => {
+                  const total = lastCompletedSession.totalWords;
+                  const knownPct = total > 0 ? Math.round((lastCompletedSession.knownCount / total) * 100) : 0;
+                  const problemPct = total > 0 ? Math.round((lastCompletedSession.problemCount / total) * 100) : 0;
+                  return (
+                    <div className="max-w-xs">
+                      <div className="h-6 rounded-full overflow-hidden flex bg-gray-700">
+                        {knownPct > 0 && (
+                          <div
+                            className="h-full bg-emerald-500 transition-all duration-500"
+                            style={{ width: `${knownPct}%` }}
+                          />
+                        )}
+                        {problemPct > 0 && (
+                          <div
+                            className="h-full bg-red-500 transition-all duration-500"
+                            style={{ width: `${problemPct}%` }}
+                          />
+                        )}
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs">
+                        <span className="text-emerald-400">
+                          Known: {lastCompletedSession.knownCount} ({knownPct}%)
+                        </span>
+                        <span className="text-red-400">
+                          Problems: {lastCompletedSession.problemCount} ({problemPct}%)
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <button
@@ -554,29 +704,128 @@ export default function Flashcards() {
           <div className="space-y-3">
             {/* All Words Option */}
             <label
-              className={`flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-colors ${
+              className={`flex flex-col p-4 rounded-lg border cursor-pointer transition-colors ${
                 filterType === 'all'
                   ? 'bg-emerald-600/20 border-emerald-500'
                   : 'bg-gray-700/50 border-gray-600 hover:bg-gray-700'
               }`}
             >
-              <div className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="filterType"
-                  value="all"
-                  checked={filterType === 'all'}
-                  onChange={() => setFilterType('all')}
-                  className="w-4 h-4 text-emerald-500 bg-gray-700 border-gray-600 focus:ring-emerald-500"
-                />
-                <div>
-                  <span className="text-white font-medium">All Words</span>
-                  <p className="text-gray-400 text-sm">Review all your vocabulary</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="filterType"
+                    value="all"
+                    checked={filterType === 'all'}
+                    onChange={() => {
+                      setFilterType('all');
+                      setAllWordsProgressFilter('all');
+                    }}
+                    className="w-4 h-4 text-emerald-500 bg-gray-700 border-gray-600 focus:ring-emerald-500"
+                  />
+                  <div>
+                    <span className="text-white font-medium">All Words</span>
+                    <p className="text-gray-400 text-sm">Review all your vocabulary</p>
+                  </div>
                 </div>
+                <span className="text-emerald-400 bg-emerald-500/20 px-3 py-1 rounded-full text-sm">
+                  {filterType === 'all' && allWordsProgressFilter !== 'all'
+                    ? filterCounts.allByProgress[allWordsProgressFilter]
+                    : filterCounts.all}
+                </span>
               </div>
-              <span className="text-gray-400 bg-gray-700 px-3 py-1 rounded-full text-sm">
-                {filterCounts.all}
-              </span>
+              
+              {filterType === 'all' && (
+                <div className="mt-4 ml-7 flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAllWordsProgressFilter('all');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      allWordsProgressFilter === 'all'
+                        ? 'border-emerald-500 bg-emerald-500/20 hover:bg-emerald-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">All</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      allWordsProgressFilter === 'all'
+                        ? 'bg-emerald-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
+                      {filterCounts.allByProgress.all}
+                    </span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAllWordsProgressFilter('moderate');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      allWordsProgressFilter === 'moderate'
+                        ? 'border-emerald-500 bg-emerald-500/20 hover:bg-emerald-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Moderate</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      allWordsProgressFilter === 'moderate'
+                        ? 'bg-emerald-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
+                      {filterCounts.allByProgress.moderate}
+                    </span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAllWordsProgressFilter('hard');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      allWordsProgressFilter === 'hard'
+                        ? 'border-emerald-500 bg-emerald-500/20 hover:bg-emerald-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Hard</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      allWordsProgressFilter === 'hard'
+                        ? 'bg-emerald-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
+                      {filterCounts.allByProgress.hard}
+                    </span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAllWordsProgressFilter('very hard');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      allWordsProgressFilter === 'very hard'
+                        ? 'border-emerald-500 bg-emerald-500/20 hover:bg-emerald-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Very Hard</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      allWordsProgressFilter === 'very hard'
+                        ? 'bg-emerald-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
+                      {filterCounts.allByProgress['very hard']}
+                    </span>
+                  </button>
+                </div>
+              )}
             </label>
 
             {/* New Words Option */}
@@ -641,69 +890,93 @@ export default function Flashcards() {
               
               {filterType === 'problem' && (
                 <div className="mt-4 ml-7 flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
-                    <input
-                      type="radio"
-                      name="problemProgressFilter"
-                      value="all"
-                      checked={problemProgressFilter === 'all'}
-                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
-                    />
-                    <span className="text-white text-sm">All</span>
-                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProblemProgressFilter('all');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      problemProgressFilter === 'all'
+                        ? 'border-red-500 bg-red-500/20 hover:bg-red-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">All</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      problemProgressFilter === 'all'
+                        ? 'bg-red-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
                       {filterCounts.problemByProgress.all}
                     </span>
-                  </label>
+                  </button>
                   
-                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
-                    <input
-                      type="radio"
-                      name="problemProgressFilter"
-                      value="moderate"
-                      checked={problemProgressFilter === 'moderate'}
-                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
-                    />
-                    <span className="text-white text-sm">moderate</span>
-                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProblemProgressFilter('moderate');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      problemProgressFilter === 'moderate'
+                        ? 'border-red-500 bg-red-500/20 hover:bg-red-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Moderate</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      problemProgressFilter === 'moderate'
+                        ? 'bg-red-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
                       {filterCounts.problemByProgress.moderate}
                     </span>
-                  </label>
+                  </button>
                   
-                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
-                    <input
-                      type="radio"
-                      name="problemProgressFilter"
-                      value="hard"
-                      checked={problemProgressFilter === 'hard'}
-                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
-                    />
-                    <span className="text-white text-sm">hard</span>
-                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProblemProgressFilter('hard');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      problemProgressFilter === 'hard'
+                        ? 'border-red-500 bg-red-500/20 hover:bg-red-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Hard</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      problemProgressFilter === 'hard'
+                        ? 'bg-red-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
                       {filterCounts.problemByProgress.hard}
                     </span>
-                  </label>
+                  </button>
                   
-                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-600 bg-gray-800/50 cursor-pointer hover:bg-gray-800 transition-colors">
-                    <input
-                      type="radio"
-                      name="problemProgressFilter"
-                      value="very hard"
-                      checked={problemProgressFilter === 'very hard'}
-                      onChange={(e) => setProblemProgressFilter(e.target.value as ProblemProgressFilter)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500"
-                    />
-                    <span className="text-white text-sm">very hard</span>
-                    <span className="text-gray-400 text-xs bg-gray-700 px-2 py-1 rounded">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProblemProgressFilter('very hard');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-white ${
+                      problemProgressFilter === 'very hard'
+                        ? 'border-red-500 bg-red-500/20 hover:bg-red-500/30'
+                        : 'border-gray-600 bg-gray-800/50 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-sm">Very Hard</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      problemProgressFilter === 'very hard'
+                        ? 'bg-red-500/30 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
                       {filterCounts.problemByProgress['very hard']}
                     </span>
-                  </label>
+                  </button>
                 </div>
               )}
             </label>
@@ -866,7 +1139,7 @@ export default function Flashcards() {
               onClick={regenerateCurrentSession}
               className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
             >
-              Regenerate Session
+              Try Again
             </button>
           </div>
         </div>
@@ -928,6 +1201,31 @@ export default function Flashcards() {
           </button>
         </div>
       </div>
+
+      {/* Streak Achievement Message */}
+      {showStreakMessage && (
+        <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-6 border border-orange-400/50 shadow-lg animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="text-4xl">🔥</div>
+              <div>
+                <p className="text-white font-bold text-xl">Streak Achieved!</p>
+                <p className="text-orange-100 text-sm mt-1">
+                  You've completed 20 reviews today! Your streak is now {streak?.currentStreak || 1} day{streak?.currentStreak !== 1 ? 's' : ''}.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowStreakMessage(false)}
+              className="text-white hover:text-orange-100 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress */}
       <div className="flex items-center justify-between text-gray-400 mb-2">
@@ -1014,7 +1312,11 @@ export default function Flashcards() {
                 ))}
               </div>
               <p className="text-gray-300 text-lg italic mb-4">
-                "{currentWord?.exampleSentence}"
+                &quot;{currentWord?.exampleSentence
+                  ? currentWord?.english
+                    ? highlightWordInSentence(currentWord.exampleSentence, currentWord.english)
+                    : currentWord.exampleSentence
+                  : ''}&quot;
               </p>
               {/* Sentence speak: mute/unmute and play (inside card) */}
               <div className="flex items-center justify-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
