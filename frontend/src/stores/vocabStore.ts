@@ -62,6 +62,19 @@ interface VocabState {
   removeWord: (id: string) => Promise<void>;
   updateWordContent: (id: string, arabicMeanings: string[], exampleSentence: string) => Promise<void>;
   importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentence: string }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
+  
+  analyzeSentence: (words: Word[], sentence: string, targetWordId?: string, scenarioDescription?: string) => Promise<{
+    detectedWords: string[];
+    grammarFeedback: { isCorrect: boolean; issues: string[]; corrections: string };
+    contextFeedback: { isAppropriate: boolean; issues: string[]; explanation: string };
+    naturalnessFeedback: { isNatural: boolean; comment: string };
+    scenarioFitFeedback?: { fitsScenario: boolean; comment: string };
+    score: number;
+    overallFeedback: string;
+  }>;
+  generateContextPrompt: (words: Word[]) => Promise<{ prompt: string; suggestedFocus?: string[]; context?: string }>;
+
+  generateScenarios: (words: Word[]) => Promise<Array<{ scenarioId: string; description: string; wordIds: string[] }>>;
 }
 
 export const useVocabStore = create<VocabState>((set, get) => ({
@@ -239,6 +252,59 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     } catch (error) {
       set({ error: 'Failed to import words' });
       return { added: 0, skipped: 0, skippedWords: [] };
+    }
+  },
+
+  analyzeSentence: async (words, sentence, targetWordId, scenarioDescription) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/words/test/feedback`, {
+        words: words.map(w => ({
+          id: w.id,
+          english: w.english,
+          arabicMeanings: w.arabicMeanings,
+          exampleSentence: w.exampleSentence,
+        })),
+        sentence,
+        targetWordId,
+        scenarioDescription,
+      });
+      return response.data.feedback;
+    } catch (error) {
+      console.error('Error analyzing sentence:', error);
+      throw new Error('Failed to analyze sentence');
+    }
+  },
+
+  generateContextPrompt: async (words) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/words/test/prompt`, {
+        words: words.map(w => ({
+          english: w.english,
+          arabicMeanings: w.arabicMeanings,
+          exampleSentence: w.exampleSentence,
+        })),
+      });
+      return response.data.prompt;
+    } catch (error) {
+      console.error('Error generating context prompt:', error);
+      throw new Error('Failed to generate context prompt');
+    }
+  },
+
+  generateScenarios: async (words) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/words/test/scenarios`, {
+        words: words.map(w => ({
+          id: w.id,
+          english: w.english,
+          arabicMeanings: w.arabicMeanings,
+          exampleSentence: w.exampleSentence,
+        })),
+      });
+      return response.data.scenarios ?? [];
+    } catch (error) {
+      console.error('Error generating scenarios:', error);
+      throw new Error('Failed to generate scenarios');
     }
   },
 }));

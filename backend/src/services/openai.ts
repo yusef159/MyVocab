@@ -30,7 +30,7 @@ export async function generateWords(
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     messages: [
       {
         role: 'user',
@@ -62,7 +62,7 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     messages: [
       {
         role: 'user',

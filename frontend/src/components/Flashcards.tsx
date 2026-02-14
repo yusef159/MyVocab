@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
 import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize, saveLastCompletedSession, getLastCompletedSession } from '../lib/flashcardSessionStorage';
+import TestSession from './TestSession';
 
 // Text-to-speech: speak a word or phrase in English
 function speakText(text: string) {
@@ -174,6 +175,7 @@ export default function Flashcards() {
   const [sessionComplete, setSessionComplete] = useState(false);
   const [sessionKnownCount, setSessionKnownCount] = useState(0);
   const [sessionProblemCount, setSessionProblemCount] = useState(0);
+  const [testSessionWords, setTestSessionWords] = useState<Word[] | null>(null);
 
   // Streak notification state
   const [showStreakMessage, setShowStreakMessage] = useState(false);
@@ -609,6 +611,17 @@ export default function Flashcards() {
     );
   }
 
+  // Show test session when we have words to test (from just-completed session or from Last Completed Session card)
+  // This check must come before !sessionStarted so that "Test Session" from the options screen works.
+  if (testSessionWords && testSessionWords.length > 0) {
+    return (
+      <TestSession
+        words={testSessionWords}
+        onBack={() => setTestSessionWords(null)}
+      />
+    );
+  }
+
   // Session Options Screen
   if (!sessionStarted) {
     return (
@@ -691,13 +704,25 @@ export default function Flashcards() {
                 })()}
               </div>
 
-              <button
-                type="button"
-                onClick={regenerateLastSession}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
-              >
-                Regenerate This Session
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={regenerateLastSession}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
+                >
+                  Regenerate This Session
+                </button>
+                {lastCompletedSession.totalWords > 0 &&
+                  lastCompletedSession.knownCount === lastCompletedSession.totalWords && (
+                  <button
+                    type="button"
+                    onClick={() => setTestSessionWords(lastCompletedSession!.words)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
+                  >
+                    Test Session
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1129,11 +1154,17 @@ export default function Flashcards() {
           </div>
 
           <div className="flex gap-4 justify-center">
-            <button
-              onClick={backToOptions}
-              className="px-6 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors"
+              <button
+                onClick={() => setTestSessionWords(shuffledWords)}
+                disabled={knownPct !== 100}
+              className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+                knownPct === 100
+                  ? 'bg-blue-600 text-white hover:bg-blue-500'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+              }`}
+              title={knownPct !== 100 ? 'Achieve 100% score to unlock Test Session' : 'Test your knowledge by writing sentences'}
             >
-              Back to Flashcards
+              Test Session
             </button>
             <button
               onClick={regenerateCurrentSession}
