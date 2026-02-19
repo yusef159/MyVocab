@@ -1,10 +1,14 @@
 export type WordStatus = 'new' | 'known' | 'problem';
 
+/** Up to 3 example sentences per word */
+export const MAX_EXAMPLE_SENTENCES = 3;
+
 export interface Word {
   id: string;
   english: string;
   arabicMeanings: string[];  // Now supports multiple meanings
-  exampleSentence: string;
+  /** 1–3 example sentences (optional legacy: exampleSentence is migrated to this) */
+  exampleSentences: string[];
   topic?: string;
   status: WordStatus;
   wrongCount: number;

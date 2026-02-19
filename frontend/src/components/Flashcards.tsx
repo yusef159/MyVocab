@@ -241,11 +241,12 @@ export default function Flashcards() {
     }
   }, [currentIndex, sessionStarted, sessionComplete, isMuted, shuffledWords]);
 
-  // Auto-speak sentence when card is flipped (if sentence speak not muted)
+  // Auto-speak first sentence when card is flipped (if sentence speak not muted)
   useEffect(() => {
     const word = shuffledWords[currentIndex];
-    if (isFlipped && word?.exampleSentence && sessionStarted && !sessionComplete && !isSentenceMuted) {
-      speakText(word.exampleSentence);
+    const firstSentence = word?.exampleSentences?.filter(Boolean)[0];
+    if (isFlipped && firstSentence && sessionStarted && !sessionComplete && !isSentenceMuted) {
+      speakText(firstSentence);
     }
   }, [isFlipped, currentIndex, shuffledWords, sessionStarted, sessionComplete, isSentenceMuted]);
 
@@ -656,7 +657,13 @@ export default function Flashcards() {
                   <div>
                     <span className="text-white font-semibold block">Last Completed Session</span>
                     <span className="text-blue-200/90 text-sm">
-                      {new Date(lastCompletedSession.savedAt).toLocaleString()}
+                      {(() => {
+                        const d = new Date(lastCompletedSession.savedAt);
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        return `${day}/${month}/${year}`;
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -712,16 +719,33 @@ export default function Flashcards() {
                 >
                   Regenerate This Session
                 </button>
-                {lastCompletedSession.totalWords > 0 &&
-                  lastCompletedSession.knownCount === lastCompletedSession.totalWords && (
-                  <button
-                    type="button"
-                    onClick={() => setTestSessionWords(lastCompletedSession!.words)}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
-                  >
-                    Test Session
-                  </button>
-                )}
+                {(() => {
+                  const total = lastCompletedSession.totalWords;
+                  const knownPct = total > 0 ? Math.round((lastCompletedSession.knownCount / total) * 100) : 0;
+                  const allWordsKnown = lastCompletedSession.words.every(word => word.status === 'known');
+                  const isUnlocked = knownPct === 100 && allWordsKnown;
+                  
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setTestSessionWords(lastCompletedSession!.words)}
+                      disabled={!isUnlocked}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                        isUnlocked
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                      }`}
+                      title={!isUnlocked ? 'Achieve 100% score and mark all words as known to unlock Test Session' : 'Test your knowledge by writing sentences'}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        {!isUnlocked && (
+                          <img src="/lock.svg" alt="" className="w-4 h-4 opacity-90 shrink-0" aria-hidden />
+                        )}
+                        Test Session
+                      </span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1154,18 +1178,30 @@ export default function Flashcards() {
           </div>
 
           <div className="flex gap-4 justify-center">
-              <button
-                onClick={() => setTestSessionWords(shuffledWords)}
-                disabled={knownPct !== 100}
-              className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
-                knownPct === 100
-                  ? 'bg-blue-600 text-white hover:bg-blue-500'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
-              }`}
-              title={knownPct !== 100 ? 'Achieve 100% score to unlock Test Session' : 'Test your knowledge by writing sentences'}
-            >
-              Test Session
-            </button>
+              {(() => {
+                const allWordsKnown = shuffledWords.every(word => word.status === 'known');
+                const isUnlocked = knownPct === 100 && allWordsKnown;
+                
+                return (
+                  <button
+                    onClick={() => setTestSessionWords(shuffledWords)}
+                    disabled={!isUnlocked}
+                    className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+                      isUnlocked
+                        ? 'bg-blue-600 text-white hover:bg-blue-500'
+                        : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                    }`}
+                    title={!isUnlocked ? 'Achieve 100% score and mark all words as known to unlock Test Session' : 'Test your knowledge by writing sentences'}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      {!isUnlocked && (
+                        <img src="/lock.svg" alt="" className="w-5 h-5 opacity-90 shrink-0" aria-hidden />
+                      )}
+                      Test Session
+                    </span>
+                  </button>
+                );
+              })()}
             <button
               onClick={regenerateCurrentSession}
               className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
@@ -1183,8 +1219,9 @@ export default function Flashcards() {
   };
 
   const handleSpeakSentence = () => {
-    if (currentWord?.exampleSentence && !isSentenceMuted) {
-      speakText(currentWord.exampleSentence);
+    const firstSentence = currentWord?.exampleSentences?.filter(Boolean)[0];
+    if (firstSentence && !isSentenceMuted) {
+      speakText(firstSentence);
     }
   };
 
@@ -1342,13 +1379,16 @@ export default function Flashcards() {
                   </p>
                 ))}
               </div>
-              <p className="text-gray-300 text-lg italic mb-4">
-                &quot;{currentWord?.exampleSentence
-                  ? currentWord?.english
-                    ? highlightWordInSentence(currentWord.exampleSentence, currentWord.english)
-                    : currentWord.exampleSentence
-                  : ''}&quot;
-              </p>
+              <div className="text-gray-300 text-lg italic mb-4 space-y-2">
+                {(currentWord?.exampleSentences ?? []).filter(Boolean).map((sent, i) => (
+                  <p key={i}>
+                    &quot;{currentWord?.english
+                      ? highlightWordInSentence(sent, currentWord.english)
+                      : sent}&quot;
+                  </p>
+                ))}
+                {(!currentWord?.exampleSentences || currentWord.exampleSentences.every(s => !s?.trim())) && <p className="text-gray-500">—</p>}
+              </div>
               {/* Sentence speak: mute/unmute and play (inside card) */}
               <div className="flex items-center justify-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
                 <button

@@ -1,9 +1,15 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Word, StreakData } from '../types';
 
+export interface DailyReviewCount {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
 const db = new Dexie('MyVocabDB') as Dexie & {
   words: EntityTable<Word, 'id'>;
   streakData: EntityTable<StreakData, 'id'>;
+  dailyReviewCounts: EntityTable<DailyReviewCount, 'date'>;
 };
 
 db.version(1).stores({
@@ -24,6 +30,43 @@ db.version(2).stores({
   }));
 });
 
+// Migration: exampleSentence -> exampleSentences (array, up to 3)
+db.version(3).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+}).upgrade(async (tx) => {
+  const words = await tx.table('words').toArray();
+  await Promise.all(words.map((word: Record<string, unknown>) => {
+    const hasNew = Array.isArray(word.exampleSentences) && word.exampleSentences.length > 0;
+    if (hasNew) return;
+    const legacy = typeof word.exampleSentence === 'string' && word.exampleSentence.trim();
+    const exampleSentences = legacy ? [word.exampleSentence as string] : [''];
+    return tx.table('words').update(word.id as string, { exampleSentences });
+  }));
+});
+
+// Migration: add dailyReviewCounts for review activity graph
+db.version(4).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+  dailyReviewCounts: 'date',
+}).upgrade(async (tx) => {
+  const streak = await tx.table('streakData').get('main-streak') as { reviewsToday?: number; reviewsDate?: string } | undefined;
+  if (streak?.reviewsToday && streak.reviewsDate) {
+    await tx.table('dailyReviewCounts').put({ date: streak.reviewsDate, count: streak.reviewsToday });
+  }
+});
+
+/** Normalize raw word from DB to Word (handle legacy exampleSentence) */
+function normalizeWord(raw: Record<string, unknown>): Word {
+  const exampleSentences = Array.isArray(raw.exampleSentences) && raw.exampleSentences.length > 0
+    ? (raw.exampleSentences as string[]).filter(Boolean).slice(0, 3)
+    : typeof raw.exampleSentence === 'string' && raw.exampleSentence.trim()
+      ? [raw.exampleSentence]
+      : [''];
+  return { ...raw, exampleSentences } as Word;
+}
+
 // Word operations
 export async function wordExists(english: string): Promise<boolean> {
   const existing = await db.words.where('english').equalsIgnoreCase(english).first();
@@ -37,9 +80,11 @@ export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount'
     return { id: null, isDuplicate: true };
   }
 
+  const sentences = (word.exampleSentences ?? []).filter(Boolean).slice(0, 3);
   const id = crypto.randomUUID();
   await db.words.add({
     ...word,
+    exampleSentences: sentences.length ? sentences : [''],
     id,
     status: 'new',
     wrongCount: 0,
@@ -51,11 +96,13 @@ export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount'
 }
 
 export async function getAllWords(): Promise<Word[]> {
-  return db.words.toArray();
+  const rows = await db.words.toArray();
+  return rows.map((r) => normalizeWord(r as unknown as Record<string, unknown>));
 }
 
 export async function getWordsByStatus(status: Word['status']): Promise<Word[]> {
-  return db.words.where('status').equals(status).toArray();
+  const rows = await db.words.where('status').equals(status).toArray();
+  return rows.map((r) => normalizeWord(r as unknown as Record<string, unknown>));
 }
 
 export async function updateWordStatus(id: string, status: Word['status']): Promise<void> {
@@ -138,9 +185,14 @@ export async function incrementCorrectCount(id: string): Promise<void> {
 
 export async function updateWordContent(
   id: string,
-  updates: { arabicMeanings?: string[]; exampleSentence?: string }
+  updates: { arabicMeanings?: string[]; exampleSentences?: string[] }
 ): Promise<void> {
-  await db.words.update(id, updates);
+  const payload: { arabicMeanings?: string[]; exampleSentences?: string[] } = { ...updates };
+  if (Array.isArray(payload.exampleSentences)) {
+    payload.exampleSentences = payload.exampleSentences.filter((s) => s && String(s).trim()).slice(0, 3);
+    if (payload.exampleSentences.length === 0) payload.exampleSentences = [''];
+  }
+  await db.words.update(id, payload);
 }
 
 export async function deleteWord(id: string): Promise<void> {
@@ -150,15 +202,20 @@ export async function deleteWord(id: string): Promise<void> {
 export async function bulkAddWords(words: Array<{
   english: string;
   arabicMeanings: string[];
-  exampleSentence: string;
+  exampleSentences: string[];
 }>): Promise<{ added: number; skipped: number; skippedWords: string[] }> {
   // Get all existing words for duplicate checking
   const existingWords = await db.words.toArray();
-  const existingSet = new Set(existingWords.map(w => w.english.toLowerCase()));
+  const existingSet = new Set(existingWords.map((w: { english: string }) => w.english.toLowerCase()));
 
   // Also check for duplicates within the import itself
   const seenInImport = new Set<string>();
   const skippedWords: string[] = [];
+
+  const normalizeSentences = (ss: string[]) => {
+    const out = (ss ?? []).filter(Boolean).map(s => String(s).trim()).slice(0, 3);
+    return out.length ? out : [''];
+  };
 
   const wordsToAdd = words.filter(word => {
     const lowerWord = word.english.toLowerCase();
@@ -178,7 +235,9 @@ export async function bulkAddWords(words: Array<{
     seenInImport.add(lowerWord);
     return true;
   }).map(word => ({
-    ...word,
+    english: word.english,
+    arabicMeanings: word.arabicMeanings,
+    exampleSentences: normalizeSentences(word.exampleSentences),
     id: crypto.randomUUID(),
     status: 'new' as const,
     wrongCount: 0,
@@ -261,6 +320,8 @@ export async function updateStreak(): Promise<StreakData> {
   // Increment reviews today
   reviewsToday += 1;
 
+  await incrementDailyReviewCount(today);
+
   // If reviews reach 20 today, increment the streak
   if (reviewsToday === 20) {
     const yesterday = new Date();
@@ -301,6 +362,41 @@ export async function updateStreak(): Promise<StreakData> {
 
   await db.streakData.put(updatedStreak);
   return updatedStreak;
+}
+
+// Daily review counts for activity graph
+export async function incrementDailyReviewCount(date: string): Promise<void> {
+  const row = await db.dailyReviewCounts.get(date);
+  if (row) {
+    await db.dailyReviewCounts.update(date, { count: row.count + 1 });
+  } else {
+    await db.dailyReviewCounts.add({ date, count: 1 });
+  }
+}
+
+function getDatesInRange(start: string, end: string): string[] {
+  const out: string[] = [];
+  const d = new Date(start + 'T12:00:00');
+  const endD = new Date(end + 'T12:00:00');
+  while (d <= endD) {
+    out.push(d.toISOString().split('T')[0]);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+export async function getReviewCountsByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<{ date: string; count: number }[]> {
+  const dates = getDatesInRange(startDate, endDate);
+  const counts = await db.dailyReviewCounts.bulkGet(dates);
+  return dates.map((date, i) => ({ date, count: counts[i]?.count ?? 0 }));
+}
+
+export async function getEarliestReviewDate(): Promise<string | null> {
+  const first = await db.dailyReviewCounts.orderBy('date').first();
+  return first?.date ?? null;
 }
 
 export { db };

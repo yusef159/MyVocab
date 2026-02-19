@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
 
@@ -68,6 +68,15 @@ function getWordIdSet(words: Word[]): string {
   return words.map(w => w.id).sort().join(',');
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function TestSession({ words, onBack }: TestSessionProps) {
   const { analyzeSentence, generateScenarios } = useVocabStore();
 
@@ -86,6 +95,20 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceAccumulatedRef = useRef('');
+  const [showTestTypePicker, setShowTestTypePicker] = useState(true);
+  type ActiveTestType = null | 'continue' | 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
+  const [activeTestType, setActiveTestType] = useState<ActiveTestType>(null);
+  const [answerFeedback, setAnswerFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [mcIndex, setMcIndex] = useState(0);
+  const [mcScore, setMcScore] = useState(0);
+  const [synonymIndex, setSynonymIndex] = useState(0);
+  const [synonymScore, setSynonymScore] = useState(0);
+  const [synonymQuestions, setSynonymQuestions] = useState<{ word: Word; correct: string; options: string[] }[]>([]);
+  const [synonymLoading, setSynonymLoading] = useState(false);
+  const [twyhIndex, setTwyhIndex] = useState(0);
+  const [twyhScore, setTwyhScore] = useState(0);
+  const [twyhInput, setTwyhInput] = useState('');
+  const twyhInputRef = useRef<HTMLInputElement>(null);
 
   // Check for saved test on mount (same word set) — offer choice, don't auto-restore
   useEffect(() => {
@@ -145,6 +168,76 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
       // ignore
     }
   }, [words, started, scenarios, currentScenarioIndex, sentencesByScenario, testComplete]);
+
+  const backToPicker = useCallback(() => {
+    setActiveTestType(null);
+    setShowTestTypePicker(true);
+    setAnswerFeedback(null);
+    setMcIndex(0);
+    setMcScore(0);
+    setSynonymIndex(0);
+    setSynonymScore(0);
+    setSynonymQuestions([]);
+    setTwyhIndex(0);
+    setTwyhScore(0);
+    setTwyhInput('');
+  }, []);
+
+  const mcQuestions = useMemo(() => {
+    if (words.length < 2) return [];
+    const pool: { word: Word; correctMeaning: string; options: string[] }[] = [];
+    const allMeanings = words.flatMap(w => (w.arabicMeanings ?? []).filter(Boolean));
+    for (const word of words) {
+      const corrects = (word.arabicMeanings ?? []).filter(Boolean);
+      if (corrects.length === 0) continue;
+      const correct = corrects[Math.floor(Math.random() * corrects.length)];
+      const others = allMeanings.filter(m => m !== correct && !(word.arabicMeanings ?? []).includes(m));
+      const wrongs = shuffle(others).slice(0, 4);
+      if (wrongs.length < 4) continue;
+      const options = shuffle([correct, ...wrongs]);
+      pool.push({ word, correctMeaning: correct, options });
+    }
+    return shuffle(pool);
+  }, [words, activeTestType]);
+
+  const twyhWords = useMemo(() => (activeTestType === 'typeWhatYouHear' ? shuffle(words) : []), [words, activeTestType]);
+
+  useEffect(() => {
+    if (activeTestType !== 'synonymMatch' || words.length < 2) return;
+    let cancelled = false;
+    setSynonymLoading(true);
+    setSynonymQuestions([]);
+    setSynonymIndex(0);
+    setSynonymScore(0);
+    (async () => {
+      const results: { word: Word; correct: string; options: string[] }[] = [];
+      const otherWords = words.map(w => w.english);
+      for (const word of shuffle(words).slice(0, Math.min(15, words.length))) {
+        try {
+          const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word.english)}&max=1`);
+          const data = await res.json();
+          const synonym = Array.isArray(data) && data[0]?.word ? data[0].word : null;
+          if (!synonym || otherWords.includes(synonym)) continue;
+          const wrongs = otherWords.filter(w => w !== word.english && w.toLowerCase() !== synonym.toLowerCase());
+          const options = shuffle([synonym, ...shuffle(wrongs).slice(0, 4)]);
+          if (options.length === 5) results.push({ word, correct: synonym, options });
+        } catch {
+          // skip
+        }
+        if (cancelled) return;
+      }
+      if (!cancelled) setSynonymQuestions(results);
+      setSynonymLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [activeTestType, words]);
+
+  // Auto-speak the current word when Type What You Hear shows a new word
+  useEffect(() => {
+    if (activeTestType !== 'typeWhatYouHear' || twyhWords.length === 0 || twyhIndex >= twyhWords.length) return;
+    const w = twyhWords[twyhIndex];
+    if (w?.english) speakWord(w.english);
+  }, [activeTestType, twyhIndex, twyhWords]);
 
   const currentScenario = scenarios[currentScenarioIndex];
   const scenarioWords: Word[] = currentScenario
@@ -278,6 +371,8 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
     setScenarios([]);
     setSentencesByScenario({});
     setCurrentScenarioIndex(0);
+    setActiveTestType(null);
+    setShowTestTypePicker(true);
     try {
       localStorage.removeItem(TEST_SESSION_STORAGE_KEY);
     } catch {
@@ -329,8 +424,302 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
     );
   }
 
-  // Not started: show start screen (no saved test or user chose "Start over")
-  if (!started) {
+  // Not started: show test type picker when user clicked "Start test"
+  if (!started && showTestTypePicker) {
+    type T = NonNullable<typeof activeTestType>;
+    const scenariosLeft = savedTestOffer ? (savedTestOffer.scenarios?.length ?? 0) - Object.keys(savedTestOffer.sentencesByScenario ?? {}).length : 0;
+    const testTypes: { id: T; label: string; description: string; icon: string; color: string; badge?: string }[] = [
+      ...(savedTestOffer ? [{
+        id: 'continue' as T,
+        label: 'Continue',
+        description: 'Resume your scenario test where you left off.',
+        icon: '\u25B6',
+        color: 'from-amber-500/20 to-amber-600/10 border-amber-500/40 hover:border-amber-400',
+        badge: savedTestOffer.testComplete ? 'View results' : `${Math.max(0, scenariosLeft)} left`,
+      }] : []),
+      { id: 'scenario' as T, label: 'Scenario Writing', description: 'Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.', icon: '\u270D', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/40 hover:border-blue-400' },
+      { id: 'multipleChoice' as T, label: 'Multiple Choice Meaning', description: 'Pick the correct meaning from 5 options for each word.', icon: '\u2611', color: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/40 hover:border-emerald-400' },
+      { id: 'synonymMatch' as T, label: 'Word Synonym Match', description: 'Match each word to its synonym from 5 options.', icon: '\u21C4', color: 'from-purple-500/20 to-purple-600/10 border-purple-500/40 hover:border-purple-400' },
+      { id: 'typeWhatYouHear' as T, label: 'Type What You Hear', description: 'Listen to the word and type it. Builds listening and spelling.', icon: '\uD83D\uDD0A', color: 'from-rose-500/20 to-rose-600/10 border-rose-500/40 hover:border-rose-400' },
+    ];
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Choose a test</h2>
+          <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">Back</button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {testTypes.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                if (t.id === 'continue') {
+                  handleContinueLastTest();
+                  setActiveTestType('scenario');
+                } else if (t.id === 'scenario') {
+                  setActiveTestType('scenario');
+                  handleStartTest();
+                } else {
+                  setActiveTestType(t.id);
+                }
+                setShowTestTypePicker(false);
+              }}
+              className={`rounded-xl border-2 p-6 text-left bg-gradient-to-br ${t.color} transition-all hover:scale-[1.02] active:scale-[0.98] flex flex-col gap-2`}
+            >
+              <span className="text-3xl">{t.icon}</span>
+              <h3 className="text-lg font-bold text-white">{t.label}</h3>
+              <p className="text-gray-300 text-sm flex-1">{t.description}</p>
+              {t.badge && <span className="text-xs font-medium text-amber-300 bg-amber-500/20 px-2 py-1 rounded w-fit">{t.badge}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple Choice Meaning test (need enough words with 4+ wrong meanings)
+  if (activeTestType === 'multipleChoice') {
+    if (mcQuestions.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
+            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+            <p className="text-gray-400">Need at least 2 words with multiple meanings to build questions. Add more words or try another test.</p>
+          </div>
+        </div>
+      );
+    }
+  }
+  if (activeTestType === 'multipleChoice' && mcQuestions.length > 0) {
+    const q = mcQuestions[mcIndex];
+    const total = mcQuestions.length;
+    const isLast = mcIndex === total - 1;
+    const handleMcAnswer = (selected: string) => {
+      const correct = selected === q.correctMeaning;
+      setAnswerFeedback(correct ? 'correct' : 'wrong');
+      if (correct) setMcScore(s => s + 1);
+      setTimeout(() => {
+        setAnswerFeedback(null);
+        if (isLast) setActiveTestType(null);
+        else setMcIndex(i => i + 1);
+      }, 1200);
+    };
+    if (mcIndex >= total) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
+            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+            <p className="text-white text-lg mb-2">Score: {mcScore} / {total}</p>
+            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
+          <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">Question {mcIndex + 1} of {total}</p>
+          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${((mcIndex + 1) / total) * 100}%` }} />
+          </div>
+        </div>
+        <div className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${answerFeedback === 'correct' ? 'border-emerald-500 animate-correct-pulse' : answerFeedback === 'wrong' ? 'border-red-500 animate-wrong-shake' : 'border-gray-700'}`}>
+          <h3 className="text-xl font-bold text-white mb-4">What is the meaning of &quot;{q.word.english}&quot;?</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {q.options.map((opt) => (
+              <button key={opt} type="button" onClick={() => handleMcAnswer(opt)} disabled={answerFeedback !== null} className={`p-4 rounded-xl border-2 text-left font-medium transition-all ${answerFeedback !== null ? 'cursor-default opacity-90' : 'hover:border-emerald-500 hover:bg-gray-700'} ${answerFeedback === 'correct' && opt === q.correctMeaning ? 'border-emerald-500 bg-emerald-500/20' : answerFeedback === 'wrong' && opt === q.correctMeaning ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-600 bg-gray-700/50 text-white'}`}>
+                <span className="text-lg" dir="rtl">{opt}</span>
+              </button>
+            ))}
+          </div>
+          {answerFeedback && (
+            <div className={`mt-4 flex items-center gap-2 ${answerFeedback === 'correct' ? 'text-emerald-400' : 'text-red-400'}`}>
+              {answerFeedback === 'correct' ? (
+                <span className="text-2xl" role="img" aria-label="Correct">✓</span>
+              ) : (
+                <span className="text-2xl" role="img" aria-label="Wrong">✗</span>
+              )}
+              <span className="font-semibold">{answerFeedback === 'correct' ? 'Correct!' : 'Wrong'}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Type What You Hear test
+  if (activeTestType === 'typeWhatYouHear' && twyhWords.length > 0) {
+    const currentWord = twyhWords[twyhIndex];
+    const total = twyhWords.length;
+    const isLast = twyhIndex === total - 1;
+    const handleTwyhNext = () => {
+      setAnswerFeedback(null);
+      setTwyhInput('');
+      if (isLast) setActiveTestType(null);
+      else {
+        setTwyhIndex(i => i + 1);
+        setTimeout(() => twyhInputRef.current?.focus(), 0);
+      }
+    };
+    const handleTwyhSubmit = () => {
+      const normalized = twyhInput.trim().toLowerCase();
+      const correct = normalized === currentWord.english.toLowerCase();
+      setAnswerFeedback(correct ? 'correct' : 'wrong');
+      if (correct) {
+        setTwyhScore(s => s + 1);
+        setTimeout(handleTwyhNext, 1200);
+      }
+    };
+    if (twyhIndex >= total) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Type What You Hear</h2>
+            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+            <p className="text-white text-lg mb-2">Score: {twyhScore} / {total}</p>
+            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Type What You Hear</h2>
+          <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">Question {twyhIndex + 1} of {total}</p>
+          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-rose-500 transition-all" style={{ width: `${((twyhIndex + 1) / total) * 100}%` }} />
+          </div>
+        </div>
+        <div className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${answerFeedback === 'correct' ? 'border-emerald-500 animate-correct-pulse' : answerFeedback === 'wrong' ? 'border-red-500 animate-wrong-shake' : 'border-gray-700'}`}>
+          <p className="text-gray-400 mb-4">Listen, then type the word you hear. (The word plays when each question appears.)</p>
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <button type="button" onClick={() => speakWord(currentWord.english)} className="p-4 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 font-semibold flex items-center gap-2">
+              <span className="text-2xl" role="img" aria-label="Play">&#128266;</span> Play again
+            </button>
+          </div>
+          <div className="flex gap-3">
+            <input ref={twyhInputRef} type="text" value={twyhInput} onChange={e => setTwyhInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !answerFeedback && handleTwyhSubmit()} placeholder="Type the word..." className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-rose-500" disabled={answerFeedback !== null} autoFocus />
+            <button onClick={handleTwyhSubmit} disabled={!twyhInput.trim() || answerFeedback !== null} className="px-6 py-3 bg-rose-600 text-white rounded-lg font-semibold hover:bg-rose-500 disabled:opacity-50">Submit</button>
+          </div>
+          {answerFeedback === 'correct' && (
+            <div className="mt-6 flex items-center gap-2 text-emerald-400">
+              <span className="text-2xl">✓</span>
+              <span className="font-semibold">Correct!</span>
+            </div>
+          )}
+          {answerFeedback === 'wrong' && (
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center gap-2 text-red-400">
+                <span className="text-2xl">✗</span>
+                <span className="font-semibold">Wrong</span>
+              </div>
+              <div className="rounded-xl bg-gray-700/80 border-2 border-amber-400/60 p-5">
+                <p className="text-amber-200/90 text-sm font-medium uppercase tracking-wide mb-2">Correct spelling</p>
+                <p className="text-2xl font-bold text-white tracking-wide">{currentWord.english}</p>
+              </div>
+              <button onClick={handleTwyhNext} className="w-full py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">
+                {isLast ? 'See score' : 'Next word \u2192'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Synonym Match test
+  if (activeTestType === 'synonymMatch') {
+    if (synonymLoading || synonymQuestions.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
+            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+            {synonymLoading ? <p className="text-gray-400">Loading synonyms...</p> : <p className="text-gray-400">Not enough synonyms found. Try again or pick another test.</p>}
+          </div>
+        </div>
+      );
+    }
+    const sq = synonymQuestions[synonymIndex];
+    const stotal = synonymQuestions.length;
+    const isLastSyn = synonymIndex === stotal - 1;
+    const handleSynAnswer = (selected: string) => {
+      const correct = selected === sq.correct;
+      setAnswerFeedback(correct ? 'correct' : 'wrong');
+      if (correct) setSynonymScore(s => s + 1);
+      setTimeout(() => {
+        setAnswerFeedback(null);
+        if (isLastSyn) setActiveTestType(null);
+        else setSynonymIndex(i => i + 1);
+      }, 1200);
+    };
+    if (synonymIndex >= stotal) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
+            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+            <p className="text-white text-lg mb-2">Score: {synonymScore} / {stotal}</p>
+            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
+          <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">Question {synonymIndex + 1} of {stotal}</p>
+          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-purple-500 transition-all" style={{ width: `${((synonymIndex + 1) / stotal) * 100}%` }} />
+          </div>
+        </div>
+        <div className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${answerFeedback === 'correct' ? 'border-emerald-500 animate-correct-pulse' : answerFeedback === 'wrong' ? 'border-red-500 animate-wrong-shake' : 'border-gray-700'}`}>
+          <h3 className="text-xl font-bold text-white mb-4">Which word is a synonym of &quot;{sq.word.english}&quot;?</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {sq.options.map((opt) => (
+              <button key={opt} type="button" onClick={() => handleSynAnswer(opt)} disabled={answerFeedback !== null} className={`p-4 rounded-xl border-2 text-left font-medium transition-all ${answerFeedback !== null ? 'cursor-default opacity-90' : 'hover:border-purple-500 hover:bg-gray-700'} ${answerFeedback === 'correct' && opt === sq.correct ? 'border-emerald-500 bg-emerald-500/20' : answerFeedback === 'wrong' && opt === sq.correct ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-600 bg-gray-700/50 text-white'}`}>
+                {opt}
+              </button>
+            ))}
+          </div>
+          {answerFeedback && (
+            <div className={`mt-4 flex items-center gap-2 ${answerFeedback === 'correct' ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className="text-2xl">{answerFeedback === 'correct' ? '\u2713' : '\u2717'}</span>
+              <span className="font-semibold">{answerFeedback === 'correct' ? 'Correct!' : 'Wrong'}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Not started and no test type selected: show start screen
+  if (false) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -351,21 +740,11 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
             <p className="text-red-400 mb-4">{scenarioError}</p>
           )}
           <button
-            onClick={handleStartTest}
-            disabled={isLoadingScenarios || words.length < 2}
+            onClick={() => setShowTestTypePicker(true)}
+            disabled={words.length < 2}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {isLoadingScenarios ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Generating scenarios...
-              </>
-            ) : (
-              'Start test'
-            )}
+            Start test
           </button>
         </div>
       </div>
@@ -388,15 +767,70 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
             Back
           </button>
         </div>
+
+        {/* Overall summary */}
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <p className="text-white mb-2">You completed {scenarios.length} scenarios with {totalSentences} sentences.</p>
-          <p className="text-gray-300 mb-4">Average score: <span className="text-white font-semibold">{avgScore}/100</span></p>
+          <p className="text-white mb-2">You completed {scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''} with {totalSentences} sentence{totalSentences !== 1 ? 's' : ''}.</p>
+          <p className="text-gray-300 mb-6">Average score: <span className="text-white font-semibold">{avgScore}/100</span></p>
+
+          {/* Per-scenario results summary */}
+          <h3 className="text-lg font-semibold text-white mb-4">Results by scenario</h3>
+          <div className="space-y-4">
+            {scenarios.map((scenario, index) => {
+              const sentences = sentencesByScenario[scenario.scenarioId] ?? [];
+              const item = sentences[0];
+              const score = item?.feedback?.score ?? 0;
+              return (
+                <div
+                  key={scenario.scenarioId}
+                  className="rounded-xl border-2 p-4 bg-gray-700/50 border-gray-600"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span className="text-gray-400 text-sm font-medium">Scenario {index + 1}</span>
+                    <span
+                      className={`inline-flex items-center justify-center min-w-[4rem] px-3 py-1.5 rounded-lg text-base font-bold ${
+                        score >= 80 ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/60' :
+                        score >= 60 ? 'bg-amber-500/30 text-amber-200 border border-amber-400/60' :
+                        'bg-rose-500/30 text-rose-200 border border-rose-400/60'
+                      }`}
+                    >
+                      {score}/100
+                    </span>
+                  </div>
+                  <p className="text-white font-medium mb-2">{scenario.description}</p>
+                  {item?.sentence && (
+                    <p className="text-gray-400 text-sm italic">"{item.sentence}"</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           <button
             onClick={handleStartNewTest}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500"
+            className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500"
           >
             Start new test
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Generating scenarios (user picked Scenario Writing from picker)
+  if (activeTestType === 'scenario' && !started && isLoadingScenarios) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Test Session</h2>
+          <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+          <svg className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="text-gray-400">Generating scenarios...</p>
         </div>
       </div>
     );
@@ -504,7 +938,7 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
                 <p className="text-white text-lg leading-relaxed">"{item.sentence}"</p>
               </div>
 
-              {/* Score + overall feedback row */}
+              {/* Score row */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
                   <span className="text-gray-500 text-sm font-medium">Overall score</span>
@@ -516,11 +950,6 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
                     {score}/100
                   </span>
                 </div>
-                {item.feedback.overallFeedback && (
-                  <p className="text-gray-300 text-sm italic max-w-xl border-l-4 border-blue-500/70 pl-4 py-1 bg-blue-500/10 rounded-r-lg">
-                    {item.feedback.overallFeedback}
-                  </p>
-                )}
               </div>
 
               {/* Three criteria — structured cards with clear hierarchy */}

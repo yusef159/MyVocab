@@ -30,12 +30,12 @@ export const sentenceFeedbackPrompt = (request: SentenceFeedbackRequest): string
 
 Evaluate the sentence on three criteria and provide a score 0-100:
 
-1. GRAMMAR: correctness of grammar and syntax. Ignore capitalization (do not count missing or incorrect capital letters as grammar errors).
+1. GRAMMAR: correctness of grammar and syntax (word order, verb forms, agreement, etc.). Do NOT deduct for punctuation or capitalization: ignore missing/incorrect commas, periods, apostrophes, capital letters, etc. The student should not lose points for punctuation.
 2. USAGE OF THE WORDS PROVIDED: whether the target word(s) are used correctly and with the right meaning.
 3. FIT WITH THE SCENARIO: how well the sentence and the use of the words fit the scenario given above.`
     : `Evaluate the sentence on three criteria and provide a score 0-100:
 
-1. GRAMMAR: correctness of grammar and syntax. Ignore capitalization (do not count missing or incorrect capital letters as grammar errors).
+1. GRAMMAR: correctness of grammar and syntax (word order, verb forms, agreement, etc.). Do NOT deduct for punctuation or capitalization: ignore missing/incorrect commas, periods, apostrophes, capital letters, etc. The student should not lose points for punctuation.
 2. USAGE OF THE WORDS PROVIDED: whether the target word(s) are used correctly and with the right meaning.
 3. NATURALNESS: whether the sentence sounds natural and idiomatic in English.`;
 
@@ -48,8 +48,8 @@ Evaluate the sentence on three criteria and provide a score 0-100:
     : '';
 
   const scoreInstruction = hasScenario
-    ? 'Score 0-100 must reflect grammar, usage of the provided words, and how well the sentence fits the scenario. Be constructive and educational.'
-    : 'Score 0-100 must reflect grammar, word usage, and naturalness combined. Be constructive and educational.';
+    ? 'Score 0-100 must reflect grammar (excluding punctuation/capitalization), usage of the provided words, and how well the sentence fits the scenario. Do not reduce the score for punctuation or capitalization errors. Be constructive and educational.'
+    : 'Score 0-100 must reflect grammar (excluding punctuation/capitalization), word usage, and naturalness combined. Do not reduce the score for punctuation or capitalization errors. Be constructive and educational.';
 
   return `You are an English language tutor helping an Arabic speaker learn vocabulary. Analyze the following sentence written by the student.
 
@@ -68,7 +68,7 @@ Provide feedback in the following JSON format:
   "grammarFeedback": {
     "isCorrect": true/false,
     "issues": ["issue1", "issue2"],
-    "corrections": "corrected sentence if needed (fix grammar only; do not change capitalization)"
+    "corrections": "corrected sentence if needed (fix grammar only; do not change capitalization or punctuation)"
   },
   "contextFeedback": {
     "isAppropriate": true/false,

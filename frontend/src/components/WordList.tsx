@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
 import type { Word } from '../types';
+import { MAX_EXAMPLE_SENTENCES } from '../types';
 
 // Highlight the target word in a sentence
 function highlightWord(sentence: string, word: string): React.ReactNode {
@@ -58,17 +59,20 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
 
   const [mode, setMode] = useState<WordInfoModalMode>('view');
   const [editMeanings, setEditMeanings] = useState<string[]>([]);
-  const [editSentence, setEditSentence] = useState('');
+  const [editSentences, setEditSentences] = useState<string[]>(['', '', '']);
   const [selectedMeaningIndices, setSelectedMeaningIndices] = useState<number[]>([]);
-  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState<number>(0);
+  const [selectedSentenceIndices, setSelectedSentenceIndices] = useState<Set<number>>(new Set());
+
+  const wordSentences = word?.exampleSentences?.filter(Boolean) ?? [];
 
   useEffect(() => {
     if (!wordId) return;
     if (word) {
       setEditMeanings([...word.arabicMeanings]);
-      setEditSentence(word.exampleSentence);
+      const s = (word.exampleSentences ?? []).filter(Boolean);
+      setEditSentences([s[0] ?? '', s[1] ?? '', s[2] ?? '']);
     }
-  }, [wordId, word?.id, word?.arabicMeanings, word?.exampleSentence]);
+  }, [wordId, word?.id, word?.arabicMeanings, word?.exampleSentences]);
 
   useEffect(() => {
     if (mode !== 'suggest') clearSuggestions();
@@ -78,32 +82,46 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
     if (!word) return;
     setMode('suggest');
     setSelectedMeaningIndices([]);
-    setSelectedSentenceIndex(0);
+    setSelectedSentenceIndices(new Set());
     await suggestMeanings(word.english);
   };
 
   useEffect(() => {
     if (mode === 'suggest' && suggestions[0]) {
       setSelectedMeaningIndices((prev) => (prev.length === 0 ? [0] : prev));
-      setSelectedSentenceIndex((prev) => (suggestions[0].exampleSentences[prev] === undefined ? 0 : prev));
+      setSelectedSentenceIndices((prev) => (prev.size === 0 ? new Set([0]) : prev));
     }
   }, [mode, suggestions]);
 
   const handleSaveEdit = async () => {
     if (!word) return;
     const meanings = editMeanings.filter((m) => m.trim());
-    if (meanings.length === 0 || !editSentence.trim()) return;
-    await updateWordContent(word.id, meanings, editSentence.trim());
+    const sentences = editSentences.map((s) => s.trim()).filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES);
+    if (meanings.length === 0 || sentences.length === 0) return;
+    await updateWordContent(word.id, meanings, sentences);
     setMode('view');
+  };
+
+  const toggleSentenceIndex = (index: number) => {
+    setSelectedSentenceIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else if (next.size < MAX_EXAMPLE_SENTENCES) next.add(index);
+      return next;
+    });
   };
 
   const handleApplySuggestions = async () => {
     if (!word) return;
     const s = suggestions[0];
-    if (!s || selectedMeaningIndices.length === 0 || !s.exampleSentences[selectedSentenceIndex]) return;
+    if (!s || selectedMeaningIndices.length === 0 || selectedSentenceIndices.size === 0) return;
     const meanings = selectedMeaningIndices.map((i) => s.arabicMeanings[i]).filter(Boolean);
-    const sentence = s.exampleSentences[selectedSentenceIndex];
-    await updateWordContent(word.id, meanings, sentence);
+    const sentences = Array.from(selectedSentenceIndices)
+      .sort((a, b) => a - b)
+      .slice(0, MAX_EXAMPLE_SENTENCES)
+      .map((i) => s.exampleSentences[i])
+      .filter(Boolean);
+    await updateWordContent(word.id, meanings, sentences);
     setMode('view');
     clearSuggestions();
   };
@@ -152,8 +170,13 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                   </p>
                 ))}
               </div>
-              <p className="text-gray-400 text-xs uppercase tracking-wide mt-2 mb-1">Example sentence</p>
-              <p className="text-gray-400 italic">"{word.exampleSentence}"</p>
+              <p className="text-gray-400 text-xs uppercase tracking-wide mt-2 mb-1">Example sentence(s)</p>
+              <div className="space-y-1">
+                {wordSentences.map((sent, i) => (
+                  <p key={i} className="text-gray-400 italic">"{sent}"</p>
+                ))}
+                {wordSentences.length === 0 && <p className="text-gray-500 italic">—</p>}
+              </div>
             </div>
 
             {/* Actions */}
@@ -210,13 +233,18 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                 + Add meaning
               </button>
             </div>
-            <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Example sentence</p>
-            <textarea
-              value={editSentence}
-              onChange={(e) => setEditSentence(e.target.value)}
-              className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2 min-h-[80px]"
-              placeholder="Example sentence"
-            />
+            <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Example sentence(s) (up to {MAX_EXAMPLE_SENTENCES})</p>
+            <div className="space-y-2 mb-4">
+              {editSentences.map((sent, i) => (
+                <textarea
+                  key={i}
+                  value={sent}
+                  onChange={(e) => setEditSentences((prev) => prev.map((s, j) => (j === i ? e.target.value : s)))}
+                  className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2 min-h-[60px]"
+                  placeholder={i === 0 ? 'Example sentence' : `Optional sentence ${i + 1}`}
+                />
+              ))}
+            </div>
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
@@ -228,7 +256,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                disabled={editMeanings.every((m) => !m.trim()) || !editSentence.trim()}
+                disabled={editMeanings.every((m) => !m.trim()) || !editSentences.some((s) => s.trim())}
                 className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Save
@@ -276,23 +304,27 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                     {selectedMeaningIndices.length} meaning{selectedMeaningIndices.length > 1 ? 's' : ''} selected
                   </p>
                 )}
-                <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Select Example Sentence</p>
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Select Example Sentence(s) (up to {MAX_EXAMPLE_SENTENCES})</p>
                 <div className="space-y-2 mb-4">
                   {suggestion.exampleSentences.map((sent, i) => (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => setSelectedSentenceIndex(i)}
-                      className={`w-full text-left p-3 rounded-lg border transition-all ${
-                        selectedSentenceIndex === i
+                      onClick={() => toggleSentenceIndex(i)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all flex items-center justify-between ${
+                        selectedSentenceIndices.has(i)
                           ? 'border-amber-500 bg-amber-500/20 text-white'
                           : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
                       }`}
                     >
                       <span className="text-sm">"{sent}"</span>
+                      {selectedSentenceIndices.has(i) && <span className="text-amber-400">✓</span>}
                     </button>
                   ))}
                 </div>
+                {selectedSentenceIndices.size > 0 && (
+                  <p className="text-amber-400 text-sm mb-2">{selectedSentenceIndices.size} sentence(s) selected</p>
+                )}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -304,7 +336,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                   <button
                     type="button"
                     onClick={handleApplySuggestions}
-                    disabled={selectedMeaningIndices.length === 0}
+                    disabled={selectedMeaningIndices.length === 0 || selectedSentenceIndices.size === 0}
                     className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Apply
@@ -321,13 +353,15 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
         {mode === 'view' && (
           <>
             <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-400 text-sm">Learning Progress</span>
+              <div className="flex items-center justify-end mb-2">
                 <span className={`font-bold ${learningPercentage >= 70 ? 'text-emerald-400' : learningPercentage >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
                   {learningPercentage}%
                 </span>
               </div>
-              <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+              <div 
+                className="h-3 bg-gray-700 rounded-full overflow-hidden cursor-pointer"
+                title="LEARNING PROGRESS"
+              >
                 <div
                   className={`h-full transition-all duration-500 ${learningPercentage >= 70 ? 'bg-emerald-500' : learningPercentage >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
                   style={{ width: `${learningPercentage}%` }}
@@ -421,15 +455,19 @@ export default function WordList() {
         .filter((row: unknown) => Array.isArray(row) && row[0] && row[1] && row[2])
         .map((row: unknown) => {
           const r = row as string[];
+          const s1 = String(r[2] ?? '').trim();
+          const s2 = String(r[3] ?? '').trim();
+          const s3 = String(r[4] ?? '').trim();
+          const exampleSentences = [s1, s2, s3].filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES);
           return {
             english: String(r[0]).trim(),
             arabicMeanings: [String(r[1]).trim()],
-            exampleSentence: String(r[2]).trim(),
+            exampleSentences: exampleSentences.length ? exampleSentences : [''],
           };
         });
 
       if (wordsToImport.length === 0) {
-        setImportMessage({ type: 'error', text: 'No valid words found in the Excel file. Make sure it has 3 columns: Word, Meaning, Sentence.' });
+        setImportMessage({ type: 'error', text: 'No valid words found in the Excel file. Columns: Word, Meaning, Sentence 1 (optional: Sentence 2, Sentence 3).' });
         return;
       }
 
@@ -471,7 +509,9 @@ export default function WordList() {
     const exportData = words.map(word => ({
       'Word': word.english,
       'Meaning (Arabic)': word.arabicMeanings.join(', '),
-      'Example Sentence': word.exampleSentence,
+      'Example Sentence 1': (word.exampleSentences && word.exampleSentences[0]) || '',
+      'Example Sentence 2': (word.exampleSentences && word.exampleSentences[1]) || '',
+      'Example Sentence 3': (word.exampleSentences && word.exampleSentences[2]) || '',
       'Status': word.status,
       'Correct Count': word.correctCount,
       'Wrong Count': word.wrongCount,
@@ -659,15 +699,20 @@ export default function WordList() {
                     </p>
                   </div>
 
-                  {/* Example Sentence */}
-                  <p className="text-gray-400 italic text-sm mb-3">
-                    "{highlightWord(word.exampleSentence, word.english)}"
-                  </p>
+                  {/* Example Sentence(s) */}
+                  <div className="text-gray-400 italic text-sm mb-3 space-y-1">
+                    {(word.exampleSentences ?? []).filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES).map((sent, i) => (
+                      <p key={i}>"{highlightWord(sent, word.english)}"</p>
+                    ))}
+                    {(!word.exampleSentences || word.exampleSentences.every(s => !s?.trim())) && <p>—</p>}
+                  </div>
 
                   {/* Learning Progress */}
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500 text-xs uppercase tracking-wide">Learning progress</span>
-                    <div className="flex-1 max-w-[120px] h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className="flex-1 max-w-[120px] h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer"
+                      title="LEARNING PROGRESS"
+                    >
                       <div
                         className={`h-full transition-all duration-300 ${
                           learningPct >= 80 ? 'bg-emerald-500' :

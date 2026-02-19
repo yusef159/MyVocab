@@ -41,10 +41,10 @@ export default function WordGenerator() {
   const handleSave = async (
     english: string,
     arabicMeanings: string[],
-    exampleSentence: string,
+    exampleSentences: string[],
     wordTopic?: string
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentence, wordTopic);
+    const result = await saveWord(english, arabicMeanings, exampleSentences, wordTopic);
     if (result.success) {
       setSaveMessage('Word saved successfully!');
       moveToNext();

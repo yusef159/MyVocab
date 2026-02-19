@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { WordSuggestion } from '../types';
+import { MAX_EXAMPLE_SENTENCES, type WordSuggestion } from '../types';
 
 // Highlight the target word in a sentence
 function highlightWord(sentence: string, word: string): React.ReactNode {
@@ -24,7 +24,7 @@ interface WordSelectorProps {
   onSave: (
     english: string,
     arabicMeanings: string[],
-    exampleSentence: string,
+    exampleSentences: string[],
     topic?: string
   ) => void;
   onSkip: () => void;
@@ -37,9 +37,18 @@ export default function WordSelector({
   onSkip,
 }: WordSelectorProps) {
   const [selectedMeanings, setSelectedMeanings] = useState<Set<number>>(new Set());
-  const [selectedSentence, setSelectedSentence] = useState<number | null>(null);
+  const [selectedSentenceIndices, setSelectedSentenceIndices] = useState<Set<number>>(new Set());
 
-  const canSave = selectedMeanings.size > 0 && selectedSentence !== null;
+  const toggleSentence = (index: number) => {
+    setSelectedSentenceIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else if (next.size < MAX_EXAMPLE_SENTENCES) next.add(index);
+      return next;
+    });
+  };
+
+  const canSave = selectedMeanings.size > 0 && selectedSentenceIndices.size > 0;
 
   const toggleMeaning = (index: number) => {
     const newSelected = new Set(selectedMeanings);
@@ -52,16 +61,16 @@ export default function WordSelector({
   };
 
   const handleSave = () => {
-    if (selectedMeanings.size > 0 && selectedSentence !== null) {
+    if (selectedMeanings.size > 0 && selectedSentenceIndices.size > 0) {
       const meanings = Array.from(selectedMeanings)
         .sort((a, b) => a - b)
         .map(i => suggestion.arabicMeanings[i]);
-      onSave(
-        suggestion.english,
-        meanings,
-        suggestion.exampleSentences[selectedSentence],
-        topic
-      );
+      const sentences = Array.from(selectedSentenceIndices)
+        .sort((a, b) => a - b)
+        .slice(0, MAX_EXAMPLE_SENTENCES)
+        .map(i => suggestion.exampleSentences[i])
+        .filter(Boolean);
+      onSave(suggestion.english, meanings, sentences, topic);
     }
   };
 
@@ -100,26 +109,35 @@ export default function WordSelector({
         )}
       </div>
 
-      {/* Example Sentences */}
+      {/* Example Sentences (select up to 3) */}
       <div className="mb-6">
         <p className="text-gray-400 text-sm uppercase tracking-wide mb-3">
-          Select Example Sentence
+          Select Example Sentence(s) <span className="text-emerald-400">• Up to {MAX_EXAMPLE_SENTENCES}</span>
         </p>
         <div className="space-y-2">
           {suggestion.exampleSentences.map((sentence, index) => (
             <button
               key={index}
-              onClick={() => setSelectedSentence(index)}
-              className={`w-full text-left p-4 rounded-lg border transition-all ${
-                selectedSentence === index
+              type="button"
+              onClick={() => toggleSentence(index)}
+              className={`w-full text-left p-4 rounded-lg border transition-all flex items-center justify-between ${
+                selectedSentenceIndices.has(index)
                   ? 'border-emerald-500 bg-emerald-500/20 text-white'
                   : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
               }`}
             >
               <span className="text-base">{highlightWord(sentence, suggestion.english)}</span>
+              {selectedSentenceIndices.has(index) && (
+                <span className="text-emerald-400 ml-2">✓</span>
+              )}
             </button>
           ))}
         </div>
+        {selectedSentenceIndices.size > 0 && (
+          <p className="text-emerald-400 text-sm mt-2">
+            {selectedSentenceIndices.size} sentence{selectedSentenceIndices.size > 1 ? 's' : ''} selected
+          </p>
+        )}
       </div>
 
       {/* Actions */}

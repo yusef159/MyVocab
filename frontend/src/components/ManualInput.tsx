@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
+import { MAX_EXAMPLE_SENTENCES } from '../types';
 
 type InputMode = 'manual' | 'ai';
 
@@ -11,7 +12,7 @@ export default function ManualInput() {
 
   // Manual input fields
   const [manualMeaning, setManualMeaning] = useState('');
-  const [manualSentence, setManualSentence] = useState('');
+  const [manualSentences, setManualSentences] = useState<string[]>(['', '', '']);
 
   const {
     suggestions,
@@ -38,9 +39,9 @@ export default function ManualInput() {
   const handleSave = async (
     english: string,
     arabicMeanings: string[],
-    exampleSentence: string
+    exampleSentences: string[]
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentence);
+    const result = await saveWord(english, arabicMeanings, exampleSentences);
     if (result.success) {
       setSuccessMessage('Word saved successfully!');
       clearSuggestions();
@@ -49,19 +50,19 @@ export default function ManualInput() {
   };
 
   const handleManualSave = async () => {
-    if (word.trim() && manualMeaning.trim() && manualSentence.trim()) {
-      const meanings = manualMeaning
-        .split(/[,،\n]/)
-        .map(m => m.trim())
-        .filter(m => m.length > 0);
+    const meanings = manualMeaning
+      .split(/[,،\n]/)
+      .map(m => m.trim())
+      .filter(m => m.length > 0);
+    if (!word.trim() || meanings.length === 0) return;
 
-      const result = await saveWord(word.trim(), meanings, manualSentence.trim());
-      if (result.success) {
-        setSuccessMessage('Word saved successfully!');
-        setWord('');
-        setManualMeaning('');
-        setManualSentence('');
-      }
+    const sentences = manualSentences.map(s => s.trim()).filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES);
+    const result = await saveWord(word.trim(), meanings, sentences.length > 0 ? sentences : ['']);
+    if (result.success) {
+      setSuccessMessage('Word saved successfully!');
+      setWord('');
+      setManualMeaning('');
+      setManualSentences(['', '', '']);
     }
   };
 
@@ -69,7 +70,11 @@ export default function ManualInput() {
     clearSuggestions();
   };
 
-  const canSaveManual = word.trim() && manualMeaning.trim() && manualSentence.trim();
+  const hasAtLeastOneMeaning = manualMeaning
+    .split(/[,،\n]/)
+    .map(m => m.trim())
+    .some(m => m.length > 0);
+  const canSaveManual = Boolean(word.trim() && hasAtLeastOneMeaning);
 
   return (
     <div className="space-y-6">
@@ -149,18 +154,23 @@ export default function ManualInput() {
                 />
               </div>
 
-              {/* Example Sentence Input */}
+              {/* Example Sentences (up to 3) */}
               <div className="mb-6">
                 <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
-                  Example Sentence
+                  Example Sentence(s) <span className="text-emerald-400 normal-case">• Up to {MAX_EXAMPLE_SENTENCES}</span>
                 </label>
-                <textarea
-                  value={manualSentence}
-                  onChange={(e) => setManualSentence(e.target.value)}
-                  placeholder="Enter an example sentence using the word..."
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
-                  rows={2}
-                />
+                <div className="space-y-3">
+                  {manualSentences.map((sent, i) => (
+                    <textarea
+                      key={i}
+                      value={sent}
+                      onChange={(e) => setManualSentences(prev => prev.map((s, j) => j === i ? e.target.value : s))}
+                      placeholder={i === 0 ? 'Enter an example sentence using the word...' : `Optional sentence ${i + 2}...`}
+                      className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                      rows={2}
+                    />
+                  ))}
+                </div>
               </div>
             </>
           )}

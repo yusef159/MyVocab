@@ -13,6 +13,8 @@ import {
   getStreakData,
   updateStreak,
   updateWordContent as dbUpdateWordContent,
+  getReviewCountsByDateRange,
+  getEarliestReviewDate,
 } from '../db';
 
 // Use relative URL since frontend is served from the same server as the API
@@ -37,12 +39,15 @@ interface VocabState {
     new: number;
   };
   streak: StreakData | null;
+  reviewCounts: { date: string; count: number }[];
 
   // Actions
   loadWords: () => Promise<void>;
   loadProblemWords: () => Promise<void>;
   loadStats: () => Promise<void>;
   loadStreak: () => Promise<void>;
+  loadReviewCounts: (startDate: string, endDate: string) => Promise<void>;
+  getEarliestReviewDate: () => Promise<string | null>;
   
   generateWords: (count: number, topic?: string, level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2') => Promise<void>;
   suggestMeanings: (word: string) => Promise<void>;
@@ -51,7 +56,7 @@ interface VocabState {
   saveWord: (
     english: string,
     arabicMeanings: string[],
-    exampleSentence: string,
+    exampleSentences: string[],
     topic?: string
   ) => Promise<{ success: boolean; isDuplicate: boolean }>;
   
@@ -60,8 +65,8 @@ interface VocabState {
   markProblemAsKnown: (id: string) => Promise<void>;
   markProblemAsStillProblem: (id: string) => Promise<void>;
   removeWord: (id: string) => Promise<void>;
-  updateWordContent: (id: string, arabicMeanings: string[], exampleSentence: string) => Promise<void>;
-  importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentence: string }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
+  updateWordContent: (id: string, arabicMeanings: string[], exampleSentences: string[]) => Promise<void>;
+  importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentences: string[] }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
   
   analyzeSentence: (words: Word[], sentence: string, targetWordId?: string, scenarioDescription?: string) => Promise<{
     detectedWords: string[];
@@ -86,6 +91,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   isSuggestingLoading: false,
   stats: { total: 0, known: 0, problem: 0, new: 0 },
   streak: null,
+  reviewCounts: [],
 
   loadWords: async () => {
     set({ isLoading: true, error: null });
@@ -125,6 +131,25 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
+  loadReviewCounts: async (startDate, endDate) => {
+    try {
+      const reviewCounts = await getReviewCountsByDateRange(startDate, endDate);
+      set({ reviewCounts });
+    } catch (error) {
+      console.error('Failed to load review counts:', error);
+      set({ reviewCounts: [] });
+    }
+  },
+
+  getEarliestReviewDate: async () => {
+    try {
+      return await getEarliestReviewDate();
+    } catch (error) {
+      console.error('Failed to get earliest review date:', error);
+      return null;
+    }
+  },
+
   generateWords: async (count, topic, level) => {
     set({ isSuggestingLoading: true, error: null, suggestions: [] });
     try {
@@ -153,9 +178,9 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     set({ suggestions: [], error: null });
   },
 
-  saveWord: async (english, arabicMeanings, exampleSentence, topic) => {
+  saveWord: async (english, arabicMeanings, exampleSentences, topic) => {
     try {
-      const result = await addWord({ english, arabicMeanings, exampleSentence, topic });
+      const result = await addWord({ english, arabicMeanings, exampleSentences, topic });
       
       if (result.isDuplicate) {
         set({ error: `Word "${english}" already exists in your vocabulary` });
@@ -233,9 +258,9 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  updateWordContent: async (id, arabicMeanings, exampleSentence) => {
+  updateWordContent: async (id, arabicMeanings, exampleSentences) => {
     try {
-      await dbUpdateWordContent(id, { arabicMeanings, exampleSentence });
+      await dbUpdateWordContent(id, { arabicMeanings, exampleSentences });
       await get().loadWords();
       await get().loadProblemWords();
     } catch (error) {
@@ -262,7 +287,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
           id: w.id,
           english: w.english,
           arabicMeanings: w.arabicMeanings,
-          exampleSentence: w.exampleSentence,
+          exampleSentence: (w.exampleSentences && w.exampleSentences[0]) || '',
         })),
         sentence,
         targetWordId,
@@ -281,7 +306,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
         words: words.map(w => ({
           english: w.english,
           arabicMeanings: w.arabicMeanings,
-          exampleSentence: w.exampleSentence,
+          exampleSentence: (w.exampleSentences && w.exampleSentences[0]) || '',
         })),
       });
       return response.data.prompt;
@@ -298,7 +323,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
           id: w.id,
           english: w.english,
           arabicMeanings: w.arabicMeanings,
-          exampleSentence: w.exampleSentence,
+          exampleSentence: (w.exampleSentences && w.exampleSentences[0]) || '',
         })),
       });
       return response.data.scenarios ?? [];
