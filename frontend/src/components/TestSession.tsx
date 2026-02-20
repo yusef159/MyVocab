@@ -62,6 +62,7 @@ interface SavedTestState {
 interface TestSessionProps {
   words: Word[];
   onBack: () => void;
+  initialTestType?: 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
 }
 
 function getWordIdSet(words: Word[]): string {
@@ -77,8 +78,8 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export default function TestSession({ words, onBack }: TestSessionProps) {
-  const { analyzeSentence, generateScenarios } = useVocabStore();
+export default function TestSession({ words, onBack, initialTestType }: TestSessionProps) {
+  const { analyzeSentence, generateScenarios, words: allWordsFromStore } = useVocabStore();
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
@@ -95,9 +96,9 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceAccumulatedRef = useRef('');
-  const [showTestTypePicker, setShowTestTypePicker] = useState(true);
+  const [showTestTypePicker, setShowTestTypePicker] = useState(!initialTestType);
   type ActiveTestType = null | 'continue' | 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
-  const [activeTestType, setActiveTestType] = useState<ActiveTestType>(null);
+  const [activeTestType, setActiveTestType] = useState<ActiveTestType>(initialTestType || null);
   const [answerFeedback, setAnswerFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [mcIndex, setMcIndex] = useState(0);
   const [mcScore, setMcScore] = useState(0);
@@ -184,21 +185,42 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
   }, []);
 
   const mcQuestions = useMemo(() => {
-    if (words.length < 2) return [];
+    if (words.length < 1 || allWordsFromStore.length < 5) return [];
     const pool: { word: Word; correctMeaning: string; options: string[] }[] = [];
-    const allMeanings = words.flatMap(w => (w.arabicMeanings ?? []).filter(Boolean));
+    
+    // Get all meanings from ALL words in vocabulary (not just test words)
+    const allMeaningsFromVocabulary = allWordsFromStore.flatMap(w => 
+      (w.arabicMeanings ?? []).filter(Boolean)
+    );
+    
     for (const word of words) {
       const corrects = (word.arabicMeanings ?? []).filter(Boolean);
       if (corrects.length === 0) continue;
+      
+      // Get the correct meaning for this word
       const correct = corrects[Math.floor(Math.random() * corrects.length)];
-      const others = allMeanings.filter(m => m !== correct && !(word.arabicMeanings ?? []).includes(m));
-      const wrongs = shuffle(others).slice(0, 4);
-      if (wrongs.length < 4) continue;
+      
+      // Get wrong meanings from ALL words in vocabulary (excluding meanings from current word)
+      const currentWordMeanings = new Set(word.arabicMeanings ?? []);
+      const wrongMeanings = allMeaningsFromVocabulary.filter(m => 
+        m !== correct && !currentWordMeanings.has(m)
+      );
+      
+      // Remove duplicates from wrong meanings
+      const uniqueWrongMeanings = Array.from(new Set(wrongMeanings));
+      
+      // Need at least 4 wrong options from the entire vocabulary
+      if (uniqueWrongMeanings.length < 4) continue;
+      
+      // Shuffle and take 4 random wrong meanings from ALL vocabulary
+      const wrongs = shuffle(uniqueWrongMeanings).slice(0, 4);
+      
+      // Combine correct and wrong options, then shuffle
       const options = shuffle([correct, ...wrongs]);
       pool.push({ word, correctMeaning: correct, options });
     }
     return shuffle(pool);
-  }, [words, activeTestType]);
+  }, [words, allWordsFromStore, activeTestType]);
 
   const twyhWords = useMemo(() => (activeTestType === 'typeWhatYouHear' ? shuffle(words) : []), [words, activeTestType]);
 
@@ -424,6 +446,17 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
     );
   }
 
+  // Auto-start test type if initialTestType is provided
+  useEffect(() => {
+    if (initialTestType && !started && activeTestType === initialTestType && !showTestTypePicker) {
+      if (initialTestType === 'scenario' && words.length >= 2) {
+        handleStartTest();
+      }
+      // For other test types, they start automatically when activeTestType is set
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTestType, started, activeTestType, showTestTypePicker, words.length]);
+
   // Not started: show test type picker when user clicked "Start test"
   if (!started && showTestTypePicker) {
     type T = NonNullable<typeof activeTestType>;
@@ -509,15 +542,65 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
       }, 1200);
     };
     if (mcIndex >= total) {
+      const percentage = Math.round((mcScore / total) * 100);
       return (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
-            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning - Results</h2>
+            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
-            <p className="text-white text-lg mb-2">Score: {mcScore} / {total}</p>
-            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">
+                {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <p className="text-gray-400">You've completed all {total} questions</p>
+            </div>
+            
+            <div className="bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-xl p-6 border-2 border-gray-600 mb-6">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Score</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {mcScore} / {total}
+                  </p>
+                </div>
+                <div className="h-16 w-px bg-gray-600"></div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Percentage</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {percentage}%
+                  </p>
+                </div>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    percentage >= 80 ? 'bg-emerald-500' :
+                    percentage >= 60 ? 'bg-amber-500' :
+                    'bg-rose-500'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+                Back to test types
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -535,7 +618,13 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
           </div>
         </div>
         <div className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${answerFeedback === 'correct' ? 'border-emerald-500 animate-correct-pulse' : answerFeedback === 'wrong' ? 'border-red-500 animate-wrong-shake' : 'border-gray-700'}`}>
-          <h3 className="text-xl font-bold text-white mb-4">What is the meaning of &quot;{q.word.english}&quot;?</h3>
+          <h3 className="text-xl font-bold text-white mb-6 text-center">
+            What is the meaning of{' '}
+            <span className="inline-block px-4 py-2 mx-2 text-2xl font-extrabold text-emerald-400 bg-emerald-500/20 border-2 border-emerald-500/50 rounded-lg">
+              {q.word.english}
+            </span>
+            ?
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {q.options.map((opt) => (
               <button key={opt} type="button" onClick={() => handleMcAnswer(opt)} disabled={answerFeedback !== null} className={`p-4 rounded-xl border-2 text-left font-medium transition-all ${answerFeedback !== null ? 'cursor-default opacity-90' : 'hover:border-emerald-500 hover:bg-gray-700'} ${answerFeedback === 'correct' && opt === q.correctMeaning ? 'border-emerald-500 bg-emerald-500/20' : answerFeedback === 'wrong' && opt === q.correctMeaning ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-600 bg-gray-700/50 text-white'}`}>
@@ -566,8 +655,10 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
     const handleTwyhNext = () => {
       setAnswerFeedback(null);
       setTwyhInput('');
-      if (isLast) setActiveTestType(null);
-      else {
+      if (isLast) {
+        // Increment index to show results screen
+        setTwyhIndex(i => i + 1);
+      } else {
         setTwyhIndex(i => i + 1);
         setTimeout(() => twyhInputRef.current?.focus(), 0);
       }
@@ -582,15 +673,65 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
       }
     };
     if (twyhIndex >= total) {
+      const percentage = Math.round((twyhScore / total) * 100);
       return (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Type What You Hear</h2>
-            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <h2 className="text-3xl font-bold text-white">Type What You Hear - Results</h2>
+            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
-            <p className="text-white text-lg mb-2">Score: {twyhScore} / {total}</p>
-            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">
+                {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <p className="text-gray-400">You've completed all {total} words</p>
+            </div>
+            
+            <div className="bg-gradient-to-r from-rose-500/20 to-emerald-500/20 rounded-xl p-6 border-2 border-gray-600 mb-6">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Score</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {twyhScore} / {total}
+                  </p>
+                </div>
+                <div className="h-16 w-px bg-gray-600"></div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Percentage</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {percentage}%
+                  </p>
+                </div>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    percentage >= 80 ? 'bg-emerald-500' :
+                    percentage >= 60 ? 'bg-amber-500' :
+                    'bg-rose-500'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+                Back to test types
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -668,20 +809,74 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
       if (correct) setSynonymScore(s => s + 1);
       setTimeout(() => {
         setAnswerFeedback(null);
-        if (isLastSyn) setActiveTestType(null);
-        else setSynonymIndex(i => i + 1);
+        if (isLastSyn) {
+          // Increment index to show results screen
+          setSynonymIndex(i => i + 1);
+        } else {
+          setSynonymIndex(i => i + 1);
+        }
       }, 1200);
     };
     if (synonymIndex >= stotal) {
+      const percentage = Math.round((synonymScore / stotal) * 100);
       return (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
-            <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <h2 className="text-3xl font-bold text-white">Word Synonym Match - Results</h2>
+            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
-            <p className="text-white text-lg mb-2">Score: {synonymScore} / {stotal}</p>
-            <button onClick={backToPicker} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">Back to test types</button>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">
+                {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <p className="text-gray-400">You've completed all {stotal} questions</p>
+            </div>
+            
+            <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl p-6 border-2 border-gray-600 mb-6">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Score</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {synonymScore} / {stotal}
+                  </p>
+                </div>
+                <div className="h-16 w-px bg-gray-600"></div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Percentage</p>
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 80 ? 'text-emerald-400' :
+                    percentage >= 60 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {percentage}%
+                  </p>
+                </div>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    percentage >= 80 ? 'bg-emerald-500' :
+                    percentage >= 60 ? 'bg-amber-500' :
+                    'bg-rose-500'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+                Back to test types
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -699,7 +894,13 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
           </div>
         </div>
         <div className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${answerFeedback === 'correct' ? 'border-emerald-500 animate-correct-pulse' : answerFeedback === 'wrong' ? 'border-red-500 animate-wrong-shake' : 'border-gray-700'}`}>
-          <h3 className="text-xl font-bold text-white mb-4">Which word is a synonym of &quot;{sq.word.english}&quot;?</h3>
+          <h3 className="text-xl font-bold text-white mb-6 text-center">
+            Which word is a synonym of{' '}
+            <span className="inline-block px-4 py-2 mx-2 text-2xl font-extrabold text-purple-400 bg-purple-500/20 border-2 border-purple-500/50 rounded-lg">
+              {sq.word.english}
+            </span>
+            ?
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {sq.options.map((opt) => (
               <button key={opt} type="button" onClick={() => handleSynAnswer(opt)} disabled={answerFeedback !== null} className={`p-4 rounded-xl border-2 text-left font-medium transition-all ${answerFeedback !== null ? 'cursor-default opacity-90' : 'hover:border-purple-500 hover:bg-gray-700'} ${answerFeedback === 'correct' && opt === sq.correct ? 'border-emerald-500 bg-emerald-500/20' : answerFeedback === 'wrong' && opt === sq.correct ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-600 bg-gray-700/50 text-white'}`}>
@@ -771,7 +972,16 @@ export default function TestSession({ words, onBack }: TestSessionProps) {
         {/* Overall summary */}
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
           <p className="text-white mb-2">You completed {scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''} with {totalSentences} sentence{totalSentences !== 1 ? 's' : ''}.</p>
-          <p className="text-gray-300 mb-6">Average score: <span className="text-white font-semibold">{avgScore}/100</span></p>
+          <div className="mb-6">
+            <p className="text-gray-300 mb-2">Average score:</p>
+            <p className={`text-3xl font-bold ${
+              avgScore >= 80 ? 'text-emerald-400' :
+              avgScore >= 60 ? 'text-amber-400' :
+              'text-rose-400'
+            }`}>
+              {avgScore}/100
+            </p>
+          </div>
 
           {/* Per-scenario results summary */}
           <h3 className="text-lg font-semibold text-white mb-4">Results by scenario</h3>
