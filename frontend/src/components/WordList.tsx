@@ -71,21 +71,20 @@ function WordHistoryTooltip(props: any) {
     wrongCount: number;
     totalReviews: number;
     createdAt: Date;
-    isSynthetic?: boolean;
   };
   const date =
     point.createdAt instanceof Date
       ? point.createdAt
       : new Date(point.createdAt);
-  const dateLabel =
-    point.isSynthetic || isNaN(date.getTime())
-      ? ''
-      : date.toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        });
-  const timeLabel = point.isSynthetic ? 'Before tracking' : dateLabel;
+  const dateLabel = isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+  const timeLabel = dateLabel;
+  const resultColor = point.result === 'known' ? '#6ee7b7' : '#fca5a5';
 
   return (
     <div
@@ -100,7 +99,7 @@ function WordHistoryTooltip(props: any) {
         Review #{point.index}
         {timeLabel && ` • ${timeLabel}`}
       </p>
-      <p style={{ color: '#a7f3d0', margin: 0, fontSize: 12 }}>
+      <p style={{ color: resultColor, margin: 0, fontSize: 12 }}>
         Result: {point.result === 'known' ? 'Known' : "Didn't know"}
       </p>
       <p style={{ color: '#d1d5db', margin: 0, fontSize: 12 }}>
@@ -264,12 +263,11 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
       wrongCount: number;
       totalReviews: number;
       createdAt: Date;
-      isSynthetic?: boolean;
     }> = [];
     let known = 0;
     let wrong = 0;
 
-    // 1. Synthetic: didn't know first
+    // 1. Synthetic: didn't know first (older problem reviews before tracking)
     for (let i = 0; i < syntheticWrong; i++) {
       wrong += 1;
       const total = known + wrong;
@@ -282,10 +280,9 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
         wrongCount: wrong,
         totalReviews: total,
         createdAt: word.createdAt instanceof Date ? word.createdAt : new Date(word.createdAt),
-        isSynthetic: true,
       });
     }
-    // 2. Synthetic: known next
+    // 2. Synthetic: known next (older correct reviews before tracking)
     for (let i = 0; i < syntheticCorrect; i++) {
       known += 1;
       const total = known + wrong;
@@ -298,10 +295,9 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
         wrongCount: wrong,
         totalReviews: total,
         createdAt: word.createdAt instanceof Date ? word.createdAt : new Date(word.createdAt),
-        isSynthetic: true,
       });
     }
-    // 3. Real events
+    // 3. Real events (tracked reviews with actual dates)
     for (const event of history) {
       if (event.result === 'known') known += 1;
       else wrong += 1;
@@ -560,6 +556,97 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
               </div>
             </div>
 
+            <div className="mt-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-gray-400 text-xs uppercase tracking-wide">
+                  Performance history
+                </p>
+                {chartData.length > 0 && (
+                  <span className="text-[10px] text-gray-500">
+                    Higher line = more known reviews over time
+                  </span>
+                )}
+              </div>
+              <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3 h-48 flex items-center justify-center">
+                {isHistoryLoading ? (
+                  <p className="text-gray-500 text-sm">Loading history...</p>
+                ) : chartData.length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center">
+                    No tracked reviews yet. Practice this word in flashcards to build your performance chart with dates.
+                  </p>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        stroke="rgba(55,65,81,0.6)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="index"
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={{ stroke: '#4b5563' }}
+                        tickLine={{ stroke: '#4b5563' }}
+                      />
+                      <YAxis
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={{ stroke: '#4b5563' }}
+                        tickLine={{ stroke: '#4b5563' }}
+                        allowDecimals={false}
+                        domain={[0, 100]}
+                        width={36}
+                        tickMargin={4}
+                      />
+                      <RechartsTooltip content={<WordHistoryTooltip />} />
+                      <Line
+                        type="monotone"
+                        dataKey="score"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          const isProblem = payload?.result === 'problem';
+                          const stroke = isProblem ? '#f87171' : '#10b981'; // red for \"didn't know\", green for known
+                          const fill = isProblem ? '#7f1d1d' : '#020617';
+                          return (
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={3}
+                              stroke={stroke}
+                              strokeWidth={1}
+                              fill={fill}
+                            />
+                          );
+                        }}
+                        activeDot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          const isProblem = payload?.result === 'problem';
+                          const stroke = isProblem ? '#f87171' : '#10b981';
+                          const fill = isProblem ? '#7f1d1d' : '#022c22';
+                          return (
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={5}
+                              stroke={stroke}
+                              strokeWidth={2}
+                              fill={fill}
+                            />
+                          );
+                        }}
+                        isAnimationActive
+                        animationDuration={400}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between mb-2">
               <p className="text-gray-400 text-xs uppercase tracking-wide">Review Counters</p>
               {!isEditingCounts && (
@@ -631,110 +718,44 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
             )}
 
             {!isEditingCounts && (
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Total Reviews</span>
-                  <span className="text-white">{totalReviews}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide">Total Reviews</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{totalReviews}</p>
                 </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Status</span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${word.status === 'known' ? 'bg-emerald-500/20 text-emerald-400' : word.status === 'problem' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                  {word.status.charAt(0).toUpperCase() + word.status.slice(1)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Date Added</span>
-                <span className="text-white">{formatDate(word.createdAt)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Recent Review</span>
-                <span className={word.lastReviewedAt ? 'text-white' : 'text-gray-500'}>
-                  {word.lastReviewedAt ? formatDate(word.lastReviewedAt) : 'Not reviewed yet'}
-                </span>
-              </div>
-              {word.status === 'problem' && (word.streak || 0) > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Streak</span>
-                  <span className="text-white flex items-center gap-1">
-                    <span>🔥</span>
-                    <span>{word.streak}/3</span>
-                  </span>
-                </div>
-              )}
-              {word.topic && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Topic</span>
-                  <span className="text-white">{word.topic}</span>
-                </div>
-              )}
-            </div>
-            )}
-
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-gray-400 text-xs uppercase tracking-wide">
-                  Performance history
-                </p>
-                {chartData.length > 0 && (
-                  <span className="text-[10px] text-gray-500">
-                    Higher line = more known reviews over time
-                  </span>
-                )}
-              </div>
-              <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3 h-48 flex items-center justify-center">
-                {isHistoryLoading ? (
-                  <p className="text-gray-500 text-sm">Loading history...</p>
-                ) : chartData.length === 0 ? (
-                  <p className="text-gray-500 text-sm text-center">
-                    No review history yet for this word. Practice it in flashcards to see your progress.
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide">Status</p>
+                  <p className={`mt-2 text-lg font-bold ${word.status === 'known' ? 'text-emerald-400' : word.status === 'problem' ? 'text-red-400' : 'text-blue-400'}`}>
+                    {word.status.charAt(0).toUpperCase() + word.status.slice(1)}
                   </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={chartData}
-                      margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        stroke="rgba(55,65,81,0.6)"
-                        strokeDasharray="3 3"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="index"
-                        tick={{ fill: '#9ca3af', fontSize: 10 }}
-                        axisLine={{ stroke: '#4b5563' }}
-                        tickLine={{ stroke: '#4b5563' }}
-                      />
-                      <YAxis
-                        tick={{ fill: '#9ca3af', fontSize: 10 }}
-                        axisLine={{ stroke: '#4b5563' }}
-                        tickLine={{ stroke: '#4b5563' }}
-                        allowDecimals={false}
-                        domain={[0, 100]}
-                        width={36}
-                        tickMargin={4}
-                      />
-                      <RechartsTooltip content={<WordHistoryTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="score"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        dot={{
-                          r: 3,
-                          stroke: '#10b981',
-                          strokeWidth: 1,
-                          fill: '#020617',
-                        }}
-                        activeDot={{ r: 5 }}
-                        isAnimationActive
-                        animationDuration={400}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide">Date Added</p>
+                  <p className="mt-2 text-xl font-bold text-white">{formatDate(word.createdAt)}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide">Recent Review</p>
+                  <p className={`mt-2 text-xl font-bold ${word.lastReviewedAt ? 'text-white' : 'text-gray-500'}`}>
+                    {word.lastReviewedAt ? formatDate(word.lastReviewedAt) : 'Not reviewed yet'}
+                  </p>
+                </div>
+                {word.status === 'problem' && (word.streak || 0) > 0 && (
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide">Streak</p>
+                    <p className="mt-2 text-2xl font-bold text-white flex items-center gap-1">
+                      <span>🔥</span>
+                      <span>{word.streak}/3</span>
+                    </p>
+                  </div>
+                )}
+                {word.topic && (
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide">Topic</p>
+                    <p className="mt-2 text-xl font-bold text-white">{word.topic}</p>
+                  </div>
                 )}
               </div>
-            </div>
+            )}
           </>
         )}
       </div>

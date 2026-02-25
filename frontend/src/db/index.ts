@@ -190,6 +190,7 @@ export async function incrementCorrectCount(id: string): Promise<void> {
       streak: newStreak,
       lastReviewedAt: new Date(),
     });
+    await logWordReviewEvent(id, 'known');
   }
 }
 
