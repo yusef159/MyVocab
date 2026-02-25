@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
-import type { Word } from '../types';
+import type { Word, WordReviewEvent } from '../types';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
 
 // Highlight the target word in a sentence
 function highlightWord(sentence: string, word: string): React.ReactNode {
@@ -51,9 +60,71 @@ interface WordInfoModalProps {
   onClose: () => void;
 }
 
+function WordHistoryTooltip(props: any) {
+  const { active, payload } = props;
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0].payload as {
+    index: number;
+    score: number;
+    result: 'known' | 'problem';
+    knownCount: number;
+    wrongCount: number;
+    totalReviews: number;
+    createdAt: Date;
+    isSynthetic?: boolean;
+  };
+  const date =
+    point.createdAt instanceof Date
+      ? point.createdAt
+      : new Date(point.createdAt);
+  const dateLabel =
+    point.isSynthetic || isNaN(date.getTime())
+      ? ''
+      : date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+  const timeLabel = point.isSynthetic ? 'Before tracking' : dateLabel;
+
+  return (
+    <div
+      style={{
+        backgroundColor: '#111827',
+        border: '1px solid #4b5563',
+        borderRadius: '8px',
+        padding: '8px 12px',
+      }}
+    >
+      <p style={{ color: '#e5e7eb', margin: 0, marginBottom: 4 }}>
+        Review #{point.index}
+        {timeLabel && ` • ${timeLabel}`}
+      </p>
+      <p style={{ color: '#a7f3d0', margin: 0, fontSize: 12 }}>
+        Result: {point.result === 'known' ? 'Known' : "Didn't know"}
+      </p>
+      <p style={{ color: '#d1d5db', margin: 0, fontSize: 12 }}>
+        Known: {point.knownCount} · Didn&apos;t know: {point.wrongCount}
+      </p>
+      <p style={{ color: '#d1d5db', margin: 0, fontSize: 12 }}>
+        Total reviews: {point.totalReviews}
+      </p>
+      <p style={{ color: '#6ee7b7', margin: 0, fontSize: 12 }}>
+        Learning: {point.score}%
+      </p>
+    </div>
+  );
+}
+
 function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   const word = useVocabStore((s) => (wordId ? s.words.find((w) => w.id === wordId) ?? null : null));
-  const { updateWordContent, suggestMeanings, clearSuggestions } = useVocabStore();
+  const {
+    updateWordContent,
+    suggestMeanings,
+    clearSuggestions,
+    updateWordReviewCounts,
+    getWordReviewHistory,
+  } = useVocabStore();
   const suggestions = useVocabStore((s) => s.suggestions);
   const isSuggestingLoading = useVocabStore((s) => s.isSuggestingLoading);
 
@@ -62,6 +133,11 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   const [editSentences, setEditSentences] = useState<string[]>(['', '', '']);
   const [selectedMeaningIndices, setSelectedMeaningIndices] = useState<number[]>([]);
   const [selectedSentenceIndices, setSelectedSentenceIndices] = useState<Set<number>>(new Set());
+  const [isEditingCounts, setIsEditingCounts] = useState(false);
+  const [editCorrectCount, setEditCorrectCount] = useState(0);
+  const [editWrongCount, setEditWrongCount] = useState(0);
+  const [reviewHistory, setReviewHistory] = useState<WordReviewEvent[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const wordSentences = word?.exampleSentences?.filter(Boolean) ?? [];
 
@@ -71,8 +147,36 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
       setEditMeanings([...word.arabicMeanings]);
       const s = (word.exampleSentences ?? []).filter(Boolean);
       setEditSentences([s[0] ?? '', s[1] ?? '', s[2] ?? '']);
+      setEditCorrectCount(word.correctCount);
+      setEditWrongCount(word.wrongCount);
+      setIsEditingCounts(false);
     }
   }, [wordId, word?.id, word?.arabicMeanings, word?.exampleSentences]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHistory = async () => {
+      if (!word) {
+        setReviewHistory([]);
+        return;
+      }
+      setIsHistoryLoading(true);
+      try {
+        const history = await getWordReviewHistory(word.id);
+        if (!cancelled) {
+          setReviewHistory(history);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHistoryLoading(false);
+        }
+      }
+    };
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [word?.id, word?.correctCount, word?.wrongCount, getWordReviewHistory, word]);
 
   useEffect(() => {
     if (mode !== 'suggest') clearSuggestions();
@@ -139,9 +243,96 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
 
   if (!wordId || !word) return null;
 
-  const learningPercentage = calculateLearningPercentage(word.correctCount, word.wrongCount);
-  const totalReviews = word.correctCount + word.wrongCount;
+  const effectiveCorrect = isEditingCounts ? editCorrectCount : word.correctCount;
+  const effectiveWrong = isEditingCounts ? editWrongCount : word.wrongCount;
+  const learningPercentage = calculateLearningPercentage(effectiveCorrect, effectiveWrong);
+  const totalReviews = effectiveCorrect + effectiveWrong;
   const suggestion = suggestions[0];
+
+  const chartData = (() => {
+    const history = reviewHistory ?? [];
+    const correctInEvents = history.filter((e) => e.result === 'known').length;
+    const wrongInEvents = history.filter((e) => e.result === 'problem').length;
+    const syntheticWrong = Math.max(0, word.wrongCount - wrongInEvents);
+    const syntheticCorrect = Math.max(0, word.correctCount - correctInEvents);
+
+    const points: Array<{
+      index: number;
+      score: number;
+      result: 'known' | 'problem';
+      knownCount: number;
+      wrongCount: number;
+      totalReviews: number;
+      createdAt: Date;
+      isSynthetic?: boolean;
+    }> = [];
+    let known = 0;
+    let wrong = 0;
+
+    // 1. Synthetic: didn't know first
+    for (let i = 0; i < syntheticWrong; i++) {
+      wrong += 1;
+      const total = known + wrong;
+      const score = total === 0 ? 0 : Math.round((known / total) * 100);
+      points.push({
+        index: points.length + 1,
+        score,
+        result: 'problem',
+        knownCount: known,
+        wrongCount: wrong,
+        totalReviews: total,
+        createdAt: word.createdAt instanceof Date ? word.createdAt : new Date(word.createdAt),
+        isSynthetic: true,
+      });
+    }
+    // 2. Synthetic: known next
+    for (let i = 0; i < syntheticCorrect; i++) {
+      known += 1;
+      const total = known + wrong;
+      const score = Math.round((known / total) * 100);
+      points.push({
+        index: points.length + 1,
+        score,
+        result: 'known',
+        knownCount: known,
+        wrongCount: wrong,
+        totalReviews: total,
+        createdAt: word.createdAt instanceof Date ? word.createdAt : new Date(word.createdAt),
+        isSynthetic: true,
+      });
+    }
+    // 3. Real events
+    for (const event of history) {
+      if (event.result === 'known') known += 1;
+      else wrong += 1;
+      const total = known + wrong;
+      const score = Math.round((known / total) * 100);
+      points.push({
+        index: points.length + 1,
+        score,
+        result: event.result,
+        knownCount: known,
+        wrongCount: wrong,
+        totalReviews: total,
+        createdAt: event.createdAt instanceof Date ? event.createdAt : new Date(event.createdAt),
+      });
+    }
+    return points;
+  })();
+
+  const handleSaveCounts = async () => {
+    if (!word) return;
+    const safeCorrect = Math.max(0, Math.floor(editCorrectCount));
+    const safeWrong = Math.max(0, Math.floor(editWrongCount));
+    await updateWordReviewCounts(word.id, safeCorrect, safeWrong);
+    setIsEditingCounts(false);
+  };
+
+  const handleCancelCounts = () => {
+    setEditCorrectCount(word.correctCount);
+    setEditWrongCount(word.wrongCount);
+    setIsEditingCounts(false);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -349,7 +540,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
           </div>
         )}
 
-        {/* Learning Progress - show in view mode only */}
+        {/* Learning Progress & review stats - show in view mode only */}
         {mode === 'view' && (
           <>
             <div className="mb-6">
@@ -368,21 +559,83 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
+
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-gray-400 text-xs uppercase tracking-wide">Review Counters</p>
+              {!isEditingCounts && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingCounts(true)}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                >
+                  Edit counts
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-gray-700/50 rounded-lg p-4">
                 <p className="text-gray-400 text-xs uppercase tracking-wide">Known Count</p>
-                <p className="text-2xl font-bold text-emerald-400">{word.correctCount}</p>
+                {isEditingCounts ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={editCorrectCount}
+                    onChange={(e) => setEditCorrectCount(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-2 w-full bg-gray-800 text-emerald-300 border border-gray-600 rounded-lg px-3 py-1.5 text-lg"
+                  />
+                ) : (
+                  <p className="text-2xl font-bold text-emerald-400">{word.correctCount}</p>
+                )}
               </div>
               <div className="bg-gray-700/50 rounded-lg p-4">
                 <p className="text-gray-400 text-xs uppercase tracking-wide">Didn't Know</p>
-                <p className="text-2xl font-bold text-red-400">{word.wrongCount}</p>
+                {isEditingCounts ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={editWrongCount}
+                    onChange={(e) => setEditWrongCount(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-2 w-full bg-gray-800 text-red-300 border border-gray-600 rounded-lg px-3 py-1.5 text-lg"
+                  />
+                ) : (
+                  <p className="text-2xl font-bold text-red-400">{word.wrongCount}</p>
+                )}
               </div>
             </div>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Reviews</span>
-                <span className="text-white">{totalReviews}</span>
+
+            {isEditingCounts && (
+              <div className="flex justify-between items-center mb-3 text-sm">
+                <span className="text-gray-400">Total Reviews (auto)</span>
+                <span className="text-white font-semibold">{totalReviews}</span>
               </div>
+            )}
+
+            {isEditingCounts && (
+              <div className="flex justify-end gap-2 mb-6 text-sm">
+                <button
+                  type="button"
+                  onClick={handleCancelCounts}
+                  className="px-3 py-1.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCounts}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+                >
+                  Save counts
+                </button>
+              </div>
+            )}
+
+            {!isEditingCounts && (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Total Reviews</span>
+                  <span className="text-white">{totalReviews}</span>
+                </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Status</span>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${word.status === 'known' ? 'bg-emerald-500/20 text-emerald-400' : word.status === 'problem' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
@@ -414,6 +667,73 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                   <span className="text-white">{word.topic}</span>
                 </div>
               )}
+            </div>
+            )}
+
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-gray-400 text-xs uppercase tracking-wide">
+                  Performance history
+                </p>
+                {chartData.length > 0 && (
+                  <span className="text-[10px] text-gray-500">
+                    Higher line = more known reviews over time
+                  </span>
+                )}
+              </div>
+              <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3 h-48 flex items-center justify-center">
+                {isHistoryLoading ? (
+                  <p className="text-gray-500 text-sm">Loading history...</p>
+                ) : chartData.length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center">
+                    No review history yet for this word. Practice it in flashcards to see your progress.
+                  </p>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        stroke="rgba(55,65,81,0.6)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="index"
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={{ stroke: '#4b5563' }}
+                        tickLine={{ stroke: '#4b5563' }}
+                      />
+                      <YAxis
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={{ stroke: '#4b5563' }}
+                        tickLine={{ stroke: '#4b5563' }}
+                        allowDecimals={false}
+                        domain={[0, 100]}
+                        width={36}
+                        tickMargin={4}
+                      />
+                      <RechartsTooltip content={<WordHistoryTooltip />} />
+                      <Line
+                        type="monotone"
+                        dataKey="score"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={{
+                          r: 3,
+                          stroke: '#10b981',
+                          strokeWidth: 1,
+                          fill: '#020617',
+                        }}
+                        activeDot={{ r: 5 }}
+                        isAnimationActive
+                        animationDuration={400}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
           </>
         )}

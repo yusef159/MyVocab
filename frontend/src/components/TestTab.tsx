@@ -4,7 +4,13 @@ import type { Word } from '../types';
 import TestSession from './TestSession';
 
 type ProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
-type TestType = 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
+type TestType =
+  | 'scenario'
+  | 'multipleChoice'
+  | 'synonymMatch'
+  | 'typeWhatYouHear'
+  | 'meaningToWordMC'
+  | 'meaningTyping';
 
 // Calculate learning progress percentage
 function calculateLearningPercentage(correctCount: number, wrongCount: number): number {
@@ -288,7 +294,7 @@ export default function TestTab() {
               <h4 className={`text-lg font-bold ${selectedTestType === 'scenario' ? 'text-white' : 'text-gray-300'}`}>Scenario Writing</h4>
               <p className={`text-sm flex-1 ${selectedTestType === 'scenario' ? 'text-gray-200' : 'text-gray-400'}`}>Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.</p>
             </button>
-            
+
             <button
               type="button"
               onClick={() => setSelectedTestType('multipleChoice')}
@@ -309,7 +315,7 @@ export default function TestTab() {
               <h4 className={`text-lg font-bold ${selectedTestType === 'multipleChoice' ? 'text-white' : 'text-gray-300'}`}>Multiple Choice Meaning</h4>
               <p className={`text-sm flex-1 ${selectedTestType === 'multipleChoice' ? 'text-gray-200' : 'text-gray-400'}`}>Pick the correct meaning from 5 options for each word.</p>
             </button>
-            
+
             <button
               type="button"
               onClick={() => setSelectedTestType('synonymMatch')}
@@ -330,7 +336,65 @@ export default function TestTab() {
               <h4 className={`text-lg font-bold ${selectedTestType === 'synonymMatch' ? 'text-white' : 'text-gray-300'}`}>Word Synonym Match</h4>
               <p className={`text-sm flex-1 ${selectedTestType === 'synonymMatch' ? 'text-gray-200' : 'text-gray-400'}`}>Match each word to its synonym from 5 options.</p>
             </button>
-            
+
+            <button
+              type="button"
+              onClick={() => setSelectedTestType('meaningToWordMC')}
+              className={`rounded-xl p-4 text-left bg-gradient-to-br transition-all hover:scale-[1.02] active:scale-[0.98] flex flex-col gap-2 relative ${
+                selectedTestType === 'meaningToWordMC'
+                  ? 'border-4 border-teal-400 shadow-lg shadow-teal-500/50 from-teal-500/40 to-teal-600/30 ring-4 ring-teal-500/30'
+                  : 'border-2 border-teal-500/40 hover:border-teal-400/60 from-teal-500/20 to-teal-600/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">🔢</span>
+                {selectedTestType === 'meaningToWordMC' && (
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-400 text-teal-900 font-bold text-lg shadow-lg">
+                    ✓
+                  </div>
+                )}
+              </div>
+              <h4 className={`text-lg font-bold ${selectedTestType === 'meaningToWordMC' ? 'text-white' : 'text-gray-300'}`}>
+                Meaning → Word (Options)
+              </h4>
+              <p
+                className={`text-sm flex-1 ${
+                  selectedTestType === 'meaningToWordMC' ? 'text-gray-200' : 'text-gray-400'
+                }`}
+              >
+                See an Arabic meaning and choose the correct English word from 5 options.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTestType('meaningTyping')}
+              className={`rounded-xl p-4 text-left bg-gradient-to-br transition-all hover:scale-[1.02] active:scale-[0.98] flex flex-col gap-2 relative ${
+                selectedTestType === 'meaningTyping'
+                  ? 'border-4 border-indigo-400 shadow-lg shadow-indigo-500/50 from-indigo-500/40 to-indigo-600/30 ring-4 ring-indigo-500/30'
+                  : 'border-2 border-indigo-500/40 hover:border-indigo-400/60 from-indigo-500/20 to-indigo-600/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">⌨️</span>
+                {selectedTestType === 'meaningTyping' && (
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-400 text-indigo-900 font-bold text-lg shadow-lg">
+                    ✓
+                  </div>
+                )}
+              </div>
+              <h4 className={`text-lg font-bold ${selectedTestType === 'meaningTyping' ? 'text-white' : 'text-gray-300'}`}>
+                Type Word From Meaning
+              </h4>
+              <p
+                className={`text-sm flex-1 ${
+                  selectedTestType === 'meaningTyping' ? 'text-gray-200' : 'text-gray-400'
+                }`}
+              >
+                See an Arabic meaning and type the English word. Checks your spelling.
+              </p>
+            </button>
+
             <button
               type="button"
               onClick={() => setSelectedTestType('typeWhatYouHear')}

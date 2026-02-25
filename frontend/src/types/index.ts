@@ -18,6 +18,14 @@ export interface Word {
   lastReviewedAt?: Date;
 }
 
+export interface WordReviewEvent {
+  id: string;
+  wordId: string;
+  result: 'known' | 'problem';
+  delta: 1 | -1;
+  createdAt: Date;
+}
+
 export interface StreakData {
   id: string;
   currentStreak: number;

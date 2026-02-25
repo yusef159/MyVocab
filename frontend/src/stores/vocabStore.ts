@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
-import type { Word, WordSuggestion, StreakData } from '../types';
+import type { Word, WordSuggestion, StreakData, WordReviewEvent } from '../types';
 import {
   getAllWords,
   getWordsByStatus,
@@ -13,8 +13,10 @@ import {
   getStreakData,
   updateStreak,
   updateWordContent as dbUpdateWordContent,
+  updateWordReviewCounts as dbUpdateWordReviewCounts,
   getReviewCountsByDateRange,
   getEarliestReviewDate,
+  getWordReviewHistory as dbGetWordReviewHistory,
 } from '../db';
 
 // Use relative URL since frontend is served from the same server as the API
@@ -67,6 +69,8 @@ interface VocabState {
   removeWord: (id: string) => Promise<void>;
   updateWordContent: (id: string, arabicMeanings: string[], exampleSentences: string[]) => Promise<void>;
   importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentences: string[] }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
+  updateWordReviewCounts: (id: string, correctCount: number, wrongCount: number) => Promise<void>;
+  getWordReviewHistory: (wordId: string) => Promise<WordReviewEvent[]>;
   
   analyzeSentence: (words: Word[], sentence: string, targetWordId?: string, scenarioDescription?: string) => Promise<{
     detectedWords: string[];
@@ -258,6 +262,16 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
+  updateWordReviewCounts: async (id, correctCount, wrongCount) => {
+    try {
+      await dbUpdateWordReviewCounts(id, correctCount, wrongCount);
+      await get().loadWords();
+      await get().loadStats();
+    } catch (error) {
+      set({ error: 'Failed to update review counts' });
+    }
+  },
+
   updateWordContent: async (id, arabicMeanings, exampleSentences) => {
     try {
       await dbUpdateWordContent(id, { arabicMeanings, exampleSentences });
@@ -277,6 +291,15 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     } catch (error) {
       set({ error: 'Failed to import words' });
       return { added: 0, skipped: 0, skippedWords: [] };
+    }
+  },
+
+  getWordReviewHistory: async (wordId) => {
+    try {
+      return await dbGetWordReviewHistory(wordId);
+    } catch (error) {
+      console.error('Failed to load review history:', error);
+      return [];
     }
   },
 

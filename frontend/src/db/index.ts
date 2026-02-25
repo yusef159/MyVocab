@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Word, StreakData } from '../types';
+import type { Word, StreakData, WordReviewEvent } from '../types';
 
 export interface DailyReviewCount {
   date: string; // YYYY-MM-DD
@@ -10,6 +10,7 @@ const db = new Dexie('MyVocabDB') as Dexie & {
   words: EntityTable<Word, 'id'>;
   streakData: EntityTable<StreakData, 'id'>;
   dailyReviewCounts: EntityTable<DailyReviewCount, 'date'>;
+  wordReviewEvents: EntityTable<WordReviewEvent, 'id'>;
 };
 
 db.version(1).stores({
@@ -55,6 +56,14 @@ db.version(4).stores({
   if (streak?.reviewsToday && streak.reviewsDate) {
     await tx.table('dailyReviewCounts').put({ date: streak.reviewsDate, count: streak.reviewsToday });
   }
+});
+
+// Migration: add wordReviewEvents table for per-word performance history
+db.version(5).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+  dailyReviewCounts: 'date',
+  wordReviewEvents: 'id, wordId, createdAt',
 });
 
 /** Normalize raw word from DB to Word (handle legacy exampleSentence) */
@@ -139,6 +148,7 @@ export async function incrementWrongCount(id: string): Promise<void> {
       streak: newStreak,
       lastReviewedAt: new Date(),
     });
+    await logWordReviewEvent(id, 'problem');
   }
 }
 
@@ -181,6 +191,57 @@ export async function incrementCorrectCount(id: string): Promise<void> {
       lastReviewedAt: new Date(),
     });
   }
+}
+
+/**
+ * Manually update a word's review counts.
+ * Used from the UI when the user edits the Known / Didn't Know counters.
+ * Also adjusts the status heuristically to keep stats consistent.
+ */
+export async function updateWordReviewCounts(
+  id: string,
+  correctCount: number,
+  wrongCount: number
+): Promise<void> {
+  const word = await db.words.get(id);
+  if (!word) return;
+
+  const safeCorrect = Math.max(0, Math.floor(Number.isFinite(correctCount) ? correctCount : 0));
+  const safeWrong = Math.max(0, Math.floor(Number.isFinite(wrongCount) ? wrongCount : 0));
+
+  let newStatus: Word['status'];
+  if (safeCorrect === 0 && safeWrong === 0) {
+    newStatus = 'new';
+  } else if (safeCorrect >= safeWrong) {
+    newStatus = 'known';
+  } else {
+    newStatus = 'problem';
+  }
+
+  await db.words.update(id, {
+    correctCount: safeCorrect,
+    wrongCount: safeWrong,
+    status: newStatus,
+    streak: 0, // Reset streak when manually editing counts
+  });
+}
+
+export async function logWordReviewEvent(
+  wordId: string,
+  result: 'known' | 'problem'
+): Promise<void> {
+  const event: WordReviewEvent = {
+    id: crypto.randomUUID(),
+    wordId,
+    result,
+    delta: result === 'known' ? 1 : -1,
+    createdAt: new Date(),
+  };
+  await db.wordReviewEvents.add(event);
+}
+
+export async function getWordReviewHistory(wordId: string): Promise<WordReviewEvent[]> {
+  return await db.wordReviewEvents.where('wordId').equals(wordId).sortBy('createdAt');
 }
 
 export async function updateWordContent(

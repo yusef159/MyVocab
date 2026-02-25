@@ -62,7 +62,13 @@ interface SavedTestState {
 interface TestSessionProps {
   words: Word[];
   onBack: () => void;
-  initialTestType?: 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
+  initialTestType?:
+    | 'scenario'
+    | 'multipleChoice'
+    | 'synonymMatch'
+    | 'typeWhatYouHear'
+    | 'meaningToWordMC'
+    | 'meaningTyping';
 }
 
 function getWordIdSet(words: Word[]): string {
@@ -97,7 +103,15 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceAccumulatedRef = useRef('');
   const [showTestTypePicker, setShowTestTypePicker] = useState(!initialTestType);
-  type ActiveTestType = null | 'continue' | 'scenario' | 'multipleChoice' | 'synonymMatch' | 'typeWhatYouHear';
+  type ActiveTestType =
+    | null
+    | 'continue'
+    | 'scenario'
+    | 'multipleChoice'
+    | 'synonymMatch'
+    | 'typeWhatYouHear'
+    | 'meaningToWordMC'
+    | 'meaningTyping';
   const [activeTestType, setActiveTestType] = useState<ActiveTestType>(initialTestType || null);
   const [answerFeedback, setAnswerFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [mcIndex, setMcIndex] = useState(0);
@@ -110,6 +124,12 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const [twyhScore, setTwyhScore] = useState(0);
   const [twyhInput, setTwyhInput] = useState('');
   const twyhInputRef = useRef<HTMLInputElement>(null);
+  const [mtwMcIndex, setMtwMcIndex] = useState(0);
+  const [mtwMcScore, setMtwMcScore] = useState(0);
+  const [mtwTypingIndex, setMtwTypingIndex] = useState(0);
+  const [mtwTypingScore, setMtwTypingScore] = useState(0);
+  const [mtwTypingInput, setMtwTypingInput] = useState('');
+  const mtwTypingInputRef = useRef<HTMLInputElement>(null);
 
   // Check for saved test on mount (same word set) — offer choice, don't auto-restore
   useEffect(() => {
@@ -182,6 +202,11 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     setTwyhIndex(0);
     setTwyhScore(0);
     setTwyhInput('');
+    setMtwMcIndex(0);
+    setMtwMcScore(0);
+    setMtwTypingIndex(0);
+    setMtwTypingScore(0);
+    setMtwTypingInput('');
   }, []);
 
   const mcQuestions = useMemo(() => {
@@ -221,6 +246,43 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return shuffle(pool);
   }, [words, allWordsFromStore, activeTestType]);
+
+  const meaningToWordQuestions = useMemo(() => {
+    if (words.length < 1 || allWordsFromStore.length < 5) return [];
+    const pool: { word: Word; meaning: string; options: string[] }[] = [];
+
+    for (const word of shuffle(words)) {
+      const meanings = (word.arabicMeanings ?? []).filter(Boolean);
+      if (meanings.length === 0) continue;
+      const meaning = meanings[Math.floor(Math.random() * meanings.length)];
+
+      const otherWords = allWordsFromStore.filter(w => w.id !== word.id);
+      if (otherWords.length < 4) continue;
+
+      const wrongEnglish = shuffle(otherWords)
+        .slice(0, 4)
+        .map(w => w.english);
+
+      const options = shuffle([word.english, ...wrongEnglish]);
+      pool.push({ word, meaning, options });
+    }
+
+    return shuffle(pool);
+  }, [words, allWordsFromStore, activeTestType]);
+
+  const meaningTypingQuestions = useMemo(() => {
+    if (words.length < 1) return [];
+    const pool: { word: Word; meaning: string }[] = [];
+
+    for (const word of shuffle(words)) {
+      const meanings = (word.arabicMeanings ?? []).filter(Boolean);
+      if (meanings.length === 0) continue;
+      const meaning = meanings[Math.floor(Math.random() * meanings.length)];
+      pool.push({ word, meaning });
+    }
+
+    return pool;
+  }, [words, activeTestType]);
 
   const twyhWords = useMemo(() => (activeTestType === 'typeWhatYouHear' ? shuffle(words) : []), [words, activeTestType]);
 
@@ -473,6 +535,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       { id: 'scenario' as T, label: 'Scenario Writing', description: 'Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.', icon: '\u270D', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/40 hover:border-blue-400' },
       { id: 'multipleChoice' as T, label: 'Multiple Choice Meaning', description: 'Pick the correct meaning from 5 options for each word.', icon: '\u2611', color: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/40 hover:border-emerald-400' },
       { id: 'synonymMatch' as T, label: 'Word Synonym Match', description: 'Match each word to its synonym from 5 options.', icon: '\u21C4', color: 'from-purple-500/20 to-purple-600/10 border-purple-500/40 hover:border-purple-400' },
+      { id: 'meaningToWordMC' as T, label: 'Meaning → Word (Options)', description: 'See an Arabic meaning and choose the correct English word from 5 options.', icon: '\uD83D\uDD20', color: 'from-teal-500/20 to-teal-600/10 border-teal-500/40 hover:border-teal-400' },
+      { id: 'meaningTyping' as T, label: 'Type Word From Meaning', description: 'See an Arabic meaning and type the English word. Checks your spelling.', icon: '\u2328', color: 'from-indigo-500/20 to-indigo-600/10 border-indigo-500/40 hover:border-indigo-400' },
       { id: 'typeWhatYouHear' as T, label: 'Type What You Hear', description: 'Listen to the word and type it. Builds listening and spelling.', icon: '\uD83D\uDD0A', color: 'from-rose-500/20 to-rose-600/10 border-rose-500/40 hover:border-rose-400' },
     ];
     return (
@@ -647,6 +711,215 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     );
   }
 
+  // Meaning → Word (options) test
+  if (activeTestType === 'meaningToWordMC') {
+    if (meaningToWordQuestions.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Meaning → Word (Options)</h2>
+            <button
+              onClick={backToPicker}
+              className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+            >
+              Back
+            </button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+            <p className="text-gray-400">
+              Need at least 5 words with meanings to build questions. Add more words or try another test.
+            </p>
+          </div>
+        </div>
+      );
+    }
+  }
+  if (activeTestType === 'meaningToWordMC' && meaningToWordQuestions.length > 0) {
+    const q = meaningToWordQuestions[mtwMcIndex];
+    const total = meaningToWordQuestions.length;
+    const isLast = mtwMcIndex === total - 1;
+    const handleMtwMcAnswer = (selected: string) => {
+      const correct = selected.toLowerCase() === q.word.english.toLowerCase();
+      setAnswerFeedback(correct ? 'correct' : 'wrong');
+      if (correct) setMtwMcScore(s => s + 1);
+      setTimeout(() => {
+        setAnswerFeedback(null);
+        if (isLast) {
+          setMtwMcIndex(i => i + 1);
+        } else {
+          setMtwMcIndex(i => i + 1);
+        }
+      }, 1200);
+    };
+    if (mtwMcIndex >= total) {
+      const percentage = Math.round((mtwMcScore / total) * 100);
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Meaning → Word (Options) - Results</h2>
+            <button
+              onClick={onBack}
+              className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+            >
+              Back
+            </button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">
+                {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <p className="text-gray-400">You've completed all {total} questions</p>
+            </div>
+
+            <div className="bg-gradient-to-r from-teal-500/20 to-blue-500/20 rounded-xl p-6 border-2 border-gray-600 mb-6">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Score</p>
+                  <p
+                    className={`text-4xl font-bold ${
+                      percentage >= 80
+                        ? 'text-emerald-400'
+                        : percentage >= 60
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {mtwMcScore} / {total}
+                  </p>
+                </div>
+                <div className="h-16 w-px bg-gray-600"></div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Percentage</p>
+                  <p
+                    className={`text-4xl font-bold ${
+                      percentage >= 80
+                        ? 'text-emerald-400'
+                        : percentage >= 60
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {percentage}%
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    percentage >= 80
+                      ? 'bg-emerald-500'
+                      : percentage >= 60
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={onBack}
+                className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
+              >
+                Back to test types
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Meaning → Word (Options)</h2>
+          <button
+            onClick={backToPicker}
+            className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+          >
+            Back
+          </button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">
+            Question {mtwMcIndex + 1} of {total}
+          </p>
+          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-teal-500 transition-all"
+              style={{ width: `${((mtwMcIndex + 1) / total) * 100}%` }}
+            />
+          </div>
+        </div>
+        <div
+          className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${
+            answerFeedback === 'correct'
+              ? 'border-emerald-500 animate-correct-pulse'
+              : answerFeedback === 'wrong'
+              ? 'border-red-500 animate-wrong-shake'
+              : 'border-gray-700'
+          }`}
+        >
+          <h3 className="text-xl font-bold text-white mb-4 text-center">
+            Which English word matches this meaning?
+          </h3>
+          <div className="mb-6 text-center">
+            <div className="inline-block px-4 py-3 rounded-xl bg-gray-700/70 border border-gray-500" dir="rtl">
+              <span className="text-2xl text-white">{q.meaning}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {q.options.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => handleMtwMcAnswer(opt)}
+                disabled={answerFeedback !== null}
+                className={`p-4 rounded-xl border-2 text-left font-medium transition-all ${
+                  answerFeedback !== null
+                    ? 'cursor-default opacity-90'
+                    : 'hover:border-teal-500 hover:bg-gray-700'
+                } ${
+                  answerFeedback === 'correct' && opt.toLowerCase() === q.word.english.toLowerCase()
+                    ? 'border-emerald-500 bg-emerald-500/20'
+                    : answerFeedback === 'wrong' && opt.toLowerCase() === q.word.english.toLowerCase()
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-gray-600 bg-gray-700/50 text-white'
+                }`}
+              >
+                <span className="text-lg">{opt}</span>
+              </button>
+            ))}
+          </div>
+          {answerFeedback && (
+            <div
+              className={`mt-4 flex items-center gap-2 ${
+                answerFeedback === 'correct' ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {answerFeedback === 'correct' ? (
+                <span className="text-2xl" role="img" aria-label="Correct">
+                  ✓
+                </span>
+              ) : (
+                <span className="text-2xl" role="img" aria-label="Wrong">
+                  ✗
+                </span>
+              )}
+              <span className="font-semibold">
+                {answerFeedback === 'correct' ? 'Correct!' : 'Wrong'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Type What You Hear test
   if (activeTestType === 'typeWhatYouHear' && twyhWords.length > 0) {
     const currentWord = twyhWords[twyhIndex];
@@ -777,6 +1050,222 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
               <button onClick={handleTwyhNext} className="w-full py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">
                 {isLast ? 'See score' : 'Next word \u2192'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Meaning → Word typing test
+  if (activeTestType === 'meaningTyping') {
+    if (meaningTypingQuestions.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Type Word From Meaning</h2>
+            <button
+              onClick={backToPicker}
+              className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+            >
+              Back
+            </button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+            <p className="text-gray-400">
+              Need at least 1 word with a meaning to build questions. Add more words or try another test.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    const current = meaningTypingQuestions[mtwTypingIndex];
+    const total = meaningTypingQuestions.length;
+    const isLast = mtwTypingIndex === total - 1;
+    const handleMtwTypingNext = () => {
+      setAnswerFeedback(null);
+      setMtwTypingInput('');
+      if (isLast) {
+        setMtwTypingIndex(i => i + 1);
+      } else {
+        setMtwTypingIndex(i => i + 1);
+        setTimeout(() => mtwTypingInputRef.current?.focus(), 0);
+      }
+    };
+    const handleMtwTypingSubmit = () => {
+      const normalized = mtwTypingInput.trim().toLowerCase();
+      const correct = normalized === current.word.english.toLowerCase();
+      setAnswerFeedback(correct ? 'correct' : 'wrong');
+      if (correct) {
+        setMtwTypingScore(s => s + 1);
+        setTimeout(handleMtwTypingNext, 1200);
+      }
+    };
+    if (mtwTypingIndex >= total) {
+      const percentage = Math.round((mtwTypingScore / total) * 100);
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-white">Type Word From Meaning - Results</h2>
+            <button
+              onClick={onBack}
+              className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+            >
+              Back
+            </button>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">
+                {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <p className="text-gray-400">You've completed all {total} meanings</p>
+            </div>
+
+            <div className="bg-gradient-to-r from-indigo-500/20 to-emerald-500/20 rounded-xl p-6 border-2 border-gray-600 mb-6">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Score</p>
+                  <p
+                    className={`text-4xl font-bold ${
+                      percentage >= 80
+                        ? 'text-emerald-400'
+                        : percentage >= 60
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {mtwTypingScore} / {total}
+                  </p>
+                </div>
+                <div className="h-16 w-px bg-gray-600"></div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm mb-1">Percentage</p>
+                  <p
+                    className={`text-4xl font-bold ${
+                      percentage >= 80
+                        ? 'text-emerald-400'
+                        : percentage >= 60
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {percentage}%
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    percentage >= 80
+                      ? 'bg-emerald-500'
+                      : percentage >= 60
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={onBack}
+                className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
+              >
+                Back to test types
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Type Word From Meaning</h2>
+          <button
+            onClick={backToPicker}
+            className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
+          >
+            Back
+          </button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">
+            Question {mtwTypingIndex + 1} of {total}
+          </p>
+          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-indigo-500 transition-all"
+              style={{ width: `${((mtwTypingIndex + 1) / total) * 100}%` }}
+            />
+          </div>
+        </div>
+        <div
+          className={`bg-gray-800 rounded-xl p-6 border-2 transition-all duration-300 ${
+            answerFeedback === 'correct'
+              ? 'border-emerald-500 animate-correct-pulse'
+              : answerFeedback === 'wrong'
+              ? 'border-red-500 animate-wrong-shake'
+              : 'border-gray-700'
+          }`}
+        >
+          <p className="text-gray-400 mb-4 text-center">
+            Look at the Arabic meaning and type the correct English word. Spelling must match.
+          </p>
+          <div className="mb-6 text-center">
+            <div className="inline-block px-4 py-3 rounded-xl bg-gray-700/70 border border-gray-500" dir="rtl">
+              <span className="text-2xl text-white">{current.meaning}</span>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <input
+              ref={mtwTypingInputRef}
+              type="text"
+              value={mtwTypingInput}
+              onChange={e => setMtwTypingInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !answerFeedback && handleMtwTypingSubmit()}
+              placeholder="Type the English word..."
+              className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={answerFeedback !== null}
+              autoFocus
+            />
+            <button
+              onClick={handleMtwTypingSubmit}
+              disabled={!mtwTypingInput.trim() || answerFeedback !== null}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 disabled:opacity-50"
+            >
+              Submit
+            </button>
+          </div>
+          {answerFeedback === 'correct' && (
+            <div className="mt-6 flex items-center gap-2 text-emerald-400">
+              <span className="text-2xl">✓</span>
+              <span className="font-semibold">Correct!</span>
+            </div>
+          )}
+          {answerFeedback === 'wrong' && (
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center gap-2 text-red-400">
+                <span className="text-2xl">✗</span>
+                <span className="font-semibold">Wrong</span>
+              </div>
+              <div className="rounded-xl bg-gray-700/80 border-2 border-amber-400/60 p-5">
+                <p className="text-amber-200/90 text-sm font-medium uppercase tracking-wide mb-2">
+                  Correct word
+                </p>
+                <p className="text-2xl font-bold text-white tracking-wide">{current.word.english}</p>
+              </div>
+              <button
+                onClick={handleMtwTypingNext}
+                className="w-full py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500"
+              >
+                {isLast ? 'See score' : 'Next meaning →'}
               </button>
             </div>
           )}
