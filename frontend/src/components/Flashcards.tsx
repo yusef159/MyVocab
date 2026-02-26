@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
 import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize, saveLastCompletedSession, getLastCompletedSession } from '../lib/flashcardSessionStorage';
+import { setRiskSessionCompletedToday } from './RiskWordsReminder';
 import TestSession from './TestSession';
 
 // Text-to-speech: speak a word or phrase in English
@@ -159,6 +161,8 @@ function filterWords(
 
 export default function Flashcards() {
   const { words, isLoading, loadWords, markAsKnown, markAsProblem, streak, loadStreak } = useVocabStore();
+  const location = useLocation();
+  const navigate = useNavigate();
   
   // Session options state
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -176,6 +180,7 @@ export default function Flashcards() {
   const [sessionKnownCount, setSessionKnownCount] = useState(0);
   const [sessionProblemCount, setSessionProblemCount] = useState(0);
   const [testSessionWords, setTestSessionWords] = useState<Word[] | null>(null);
+  const [isRiskReminderSession, setIsRiskReminderSession] = useState(false);
 
   // Streak notification state
   const [showStreakMessage, setShowStreakMessage] = useState(false);
@@ -189,6 +194,40 @@ export default function Flashcards() {
     loadWords();
     loadStreak();
   }, [loadWords, loadStreak]);
+
+  // Start a session with risk words when navigated from RiskWordsReminder
+  useEffect(() => {
+    const riskWordIds = (location.state as { riskWordIds?: string[] } | null)?.riskWordIds;
+    if (!riskWordIds?.length || words.length === 0 || sessionStarted) return;
+    const sessionWords = shuffleArray(words.filter((w) => riskWordIds.includes(w.id)));
+    if (sessionWords.length === 0) return;
+    navigate('/flashcards', { replace: true, state: {} });
+    setShuffledWords(sessionWords);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionComplete(false);
+    setSessionKnownCount(0);
+    setSessionProblemCount(0);
+    setSessionStarted(true);
+    setIsRiskReminderSession(true);
+    saveSession({
+      wordIds: sessionWords.map((w) => w.id),
+      currentIndex: 0,
+      filterType: 'all',
+      dateRange: 30,
+      savedAt: new Date().toISOString(),
+      knownCount: 0,
+      problemCount: 0,
+    });
+  }, [location.state, words, sessionStarted, navigate]);
+
+  // When a risk-reminder session is completed, mark so we don't show reminder again today
+  useEffect(() => {
+    if (sessionComplete && isRiskReminderSession) {
+      setRiskSessionCompletedToday();
+      setIsRiskReminderSession(false);
+    }
+  }, [sessionComplete, isRiskReminderSession]);
 
   // Initialize previousReviewsToday when streak loads
   useEffect(() => {

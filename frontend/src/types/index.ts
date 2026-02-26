@@ -18,6 +18,11 @@ export interface Word {
   lastReviewedAt?: Date;
 }
 
+/** Word with risk metadata for the recall reminder (known words at risk of being forgotten) */
+export interface RiskWord extends Word {
+  daysSinceReview: number;
+}
+
 export interface WordReviewEvent {
   id: string;
   wordId: string;

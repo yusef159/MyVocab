@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Word, StreakData, WordReviewEvent } from '../types';
+import type { Word, RiskWord, StreakData, WordReviewEvent } from '../types';
 
 export interface DailyReviewCount {
   date: string; // YYYY-MM-DD
@@ -112,6 +112,50 @@ export async function getAllWords(): Promise<Word[]> {
 export async function getWordsByStatus(status: Word['status']): Promise<Word[]> {
   const rows = await db.words.where('status').equals(status).toArray();
   return rows.map((r) => normalizeWord(r as unknown as Record<string, unknown>));
+}
+
+/** Min days since last review to consider a known word "at risk" of being forgotten */
+const RISK_DAYS_THRESHOLD = 14;
+/** Max number of at-risk words to return (for UI and session cap) */
+const RISK_WORDS_TOP_N = 20;
+
+/**
+ * Returns known words that are at risk of being forgotten: status is "known" but
+ * success rate is below 100% (they have at least one wrong in their history).
+ * Uses correctCount, wrongCount, total reviews, and lastReviewedAt for scoring.
+ */
+export async function getRiskWords(): Promise<RiskWord[]> {
+  const words = await getAllWords();
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+
+  const withRisk: RiskWord[] = words
+    .filter((w) => w.status === 'known')
+    .filter((w) => {
+      const total = (w.correctCount || 0) + (w.wrongCount || 0);
+      if (total === 0) return false;
+      const rate = (w.correctCount || 0) / total;
+      return rate < 1;
+    })
+    .map((w) => {
+      const lastReviewedAt = w.lastReviewedAt ? new Date(w.lastReviewedAt).getTime() : null;
+      const daysSinceReview =
+        lastReviewedAt != null
+          ? Math.floor((now - lastReviewedAt) / oneDayMs)
+          : 365;
+      return { ...w, daysSinceReview };
+    })
+    .filter((w) => w.daysSinceReview >= RISK_DAYS_THRESHOLD)
+    .map((w) => {
+      const riskScore =
+        w.daysSinceReview - (w.correctCount || 0) * 2 + (w.wrongCount || 0);
+      return { ...w, riskScore };
+    })
+    .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0))
+    .slice(0, RISK_WORDS_TOP_N)
+    .map(({ riskScore: _, ...rest }) => rest);
+
+  return withRisk;
 }
 
 export async function updateWordStatus(id: string, status: Word['status']): Promise<void> {

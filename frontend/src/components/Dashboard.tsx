@@ -9,6 +9,7 @@ import {
   Cell,
 } from 'recharts';
 import { useVocabStore } from '../stores/vocabStore';
+import RiskWordsReminder from './RiskWordsReminder';
 
 type ReviewRangeKey =
   | 'today'
@@ -162,6 +163,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <h2 className="text-3xl font-bold text-white">Dashboard</h2>
+
+      <RiskWordsReminder />
 
       {/* Streak Section */}
       <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 text-white">
