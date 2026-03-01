@@ -44,7 +44,8 @@ Evaluate the sentence on three criteria and provide a score 0-100:
   "scenarioFitFeedback": {
     "fitsScenario": true/false,
     "comment": "Brief explanation of how well the sentence and word usage fit the scenario"
-  }`
+  },
+  "modelSentence": "One complete sentence that YOU compose, using all of the provided words correctly, that fits the scenario. This is your own example for the student to see."`
     : '';
 
   const scoreInstruction = hasScenario
@@ -79,10 +80,12 @@ Provide feedback in the following JSON format:
     "isNatural": true/false,
     "comment": "Brief comment (or scenario fit when scenario is provided)"
   }${scenarioFitBlock},
-  "score": 0-100,
+  "score": <number 0-100>,
   "overallFeedback": "Encouraging overall feedback message"
 }
 
-${scoreInstruction}`;
+You MUST output "score" as a JSON number (e.g. 85 or 90), not a string. It is an integer from 0 to 100 reflecting the sentence quality.
+
+${scoreInstruction}${hasScenario ? '\n\nWhen a scenario is given, you MUST include "modelSentence": a single sentence you write that uses all the provided words and fits the scenario. This gives the student an AI-written example to compare with the correction.' : ''}`;
 
 };

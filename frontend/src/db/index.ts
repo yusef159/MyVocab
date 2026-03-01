@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Word, RiskWord, StreakData, WordReviewEvent } from '../types';
+import type { Word, RiskWord, StreakData, WordReviewEvent, GrammarProgress } from '../types';
 
 export interface DailyReviewCount {
   date: string; // YYYY-MM-DD
@@ -11,6 +11,7 @@ const db = new Dexie('MyVocabDB') as Dexie & {
   streakData: EntityTable<StreakData, 'id'>;
   dailyReviewCounts: EntityTable<DailyReviewCount, 'date'>;
   wordReviewEvents: EntityTable<WordReviewEvent, 'id'>;
+  grammarProgress: EntityTable<GrammarProgress, 'skillId'>;
 };
 
 db.version(1).stores({
@@ -64,6 +65,15 @@ db.version(5).stores({
   streakData: 'id',
   dailyReviewCounts: 'date',
   wordReviewEvents: 'id, wordId, createdAt',
+});
+
+// Migration: add grammarProgress table for grammar skill tracking
+db.version(6).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+  dailyReviewCounts: 'date',
+  wordReviewEvents: 'id, wordId, createdAt',
+  grammarProgress: 'skillId, levelId',
 });
 
 /** Normalize raw word from DB to Word (handle legacy exampleSentence) */
@@ -503,6 +513,37 @@ export async function getReviewCountsByDateRange(
 export async function getEarliestReviewDate(): Promise<string | null> {
   const first = await db.dailyReviewCounts.orderBy('date').first();
   return first?.date ?? null;
+}
+
+// Grammar progress operations
+
+export async function getAllGrammarProgress(): Promise<GrammarProgress[]> {
+  return await db.grammarProgress.toArray();
+}
+
+export async function getGrammarProgressForSkill(
+  skillId: string
+): Promise<GrammarProgress | undefined> {
+  return await db.grammarProgress.get(skillId);
+}
+
+export async function saveGrammarProgress(progress: GrammarProgress): Promise<void> {
+  const safe: GrammarProgress = {
+    ...progress,
+    skillId: progress.skillId,
+    levelId: progress.levelId,
+    attempts: Math.max(0, Math.floor(progress.attempts ?? 0)),
+    correct: Math.max(0, Math.floor(progress.correct ?? 0)),
+    masteryPercent: Math.max(0, Math.min(100, Math.floor(progress.masteryPercent ?? 0))),
+    status: progress.status,
+    lastResult: progress.lastResult,
+    lastUpdated: progress.lastUpdated ?? new Date().toISOString(),
+  };
+  await db.grammarProgress.put(safe);
+}
+
+export async function resetGrammarProgressForSkill(skillId: string): Promise<void> {
+  await db.grammarProgress.delete(skillId);
 }
 
 export { db };

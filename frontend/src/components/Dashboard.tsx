@@ -9,6 +9,8 @@ import {
   Cell,
 } from 'recharts';
 import { useVocabStore } from '../stores/vocabStore';
+import { useGrammarStore } from '../stores/grammarStore';
+import { useNavigate } from 'react-router-dom';
 import RiskWordsReminder from './RiskWordsReminder';
 
 type ReviewRangeKey =
@@ -133,6 +135,8 @@ export default function Dashboard() {
     loadReviewCounts,
     getEarliestReviewDate,
   } = useVocabStore();
+  const navigate = useNavigate();
+  const { levels, levelSummaries, progressBySkillId } = useGrammarStore();
 
   const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastWeek');
 
@@ -140,6 +144,23 @@ export default function Dashboard() {
     loadStats();
     loadStreak();
   }, [loadStats, loadStreak]);
+
+  const grammarOverview = (() => {
+    let mastered = 0;
+    let total = 0;
+    for (const levelId of levels) {
+      const summary = levelSummaries[levelId];
+      const skills = summary?.skills ?? [];
+      total += skills.length;
+      for (const skill of skills) {
+        if (progressBySkillId[skill.id]?.status === 'mastered') {
+          mastered += 1;
+        }
+      }
+    }
+    const percent = total > 0 ? Math.round((mastered / total) * 100) : 0;
+    return { mastered, total, percent };
+  })();
 
   const loadReviewData = useCallback(async () => {
     if (reviewRange === 'allTime') {
@@ -211,6 +232,24 @@ export default function Dashboard() {
         <div className="bg-gray-800 rounded-xl p-6 border border-blue-500/30">
           <p className="text-blue-400 text-sm uppercase tracking-wide">New</p>
           <p className="text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30">
+          <p className="text-purple-400 text-sm uppercase tracking-wide">
+            Grammar Skills
+          </p>
+          <p className="text-3xl font-bold text-white mt-2">
+            {grammarOverview.mastered}/{grammarOverview.total || 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {grammarOverview.percent}% mastered
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/grammar')}
+            className="mt-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-500"
+          >
+            Continue grammar
+          </button>
         </div>
       </div>
 

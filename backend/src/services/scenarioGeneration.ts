@@ -22,7 +22,7 @@ export async function generateScenarios(
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-mini',
+    model: 'gpt-4.1-nano',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.7,
     max_tokens: 1200,

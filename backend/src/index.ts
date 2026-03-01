@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import wordsRouter from './routes/words.js';
+import grammarRouter from './routes/grammar.js';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 
 // API routes
 app.use('/api/words', wordsRouter);
+app.use('/api/grammar', grammarRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });

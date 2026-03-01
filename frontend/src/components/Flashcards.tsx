@@ -721,6 +721,12 @@ export default function Flashcards() {
                   const total = lastCompletedSession.totalWords;
                   const knownPct = total > 0 ? Math.round((lastCompletedSession.knownCount / total) * 100) : 0;
                   const problemPct = total > 0 ? Math.round((lastCompletedSession.problemCount / total) * 100) : 0;
+                  // Some of the words from this session might still be "problem"
+                  // words in your overall vocabulary (problem words need several
+                  // successful reviews before they are promoted to "known").
+                  const currentProblemWords = lastCompletedSession.words.filter(word => word.status === 'problem').length;
+                  const currentProblemPct =
+                    total > 0 ? Math.round((currentProblemWords / total) * 100) : 0;
                   return (
                     <div className="max-w-xs">
                       <div className="h-6 rounded-full overflow-hidden flex bg-gray-700">
@@ -745,6 +751,12 @@ export default function Flashcards() {
                           Problems: {lastCompletedSession.problemCount} ({problemPct}%)
                         </span>
                       </div>
+                      {currentProblemWords > 0 && knownPct === 100 && (
+                        <p className="mt-1 text-[11px] text-amber-300">
+                          <span className="font-bold text-amber-200 text-sm">{currentProblemWords}</span> problem words
+                          (<span className="font-bold text-amber-200 text-sm">{currentProblemPct}%</span>)
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
@@ -1183,38 +1195,57 @@ export default function Flashcards() {
           </p>
 
           {/* Summary: counts + percentages */}
-          <div className="mb-6 text-left max-w-sm mx-auto space-y-2">
-            <p className="text-emerald-400 font-medium">
-              {sessionKnownCount} known ({knownPct}%)
-            </p>
-            <p className="text-red-400 font-medium">
-              {sessionProblemCount} need more practice ({problemPct}%)
-            </p>
-          </div>
+          {(() => {
+            // Some words might still be "problem" in your overall vocabulary even
+            // if this session was answered 100% correctly (problem words need a
+            // streak of correct answers before they become "known").
+            const problemWordsStillTracked = shuffledWords.filter(word => word.status === 'problem').length;
+            const problemWordsStillTrackedPct =
+              total > 0 ? Math.round((problemWordsStillTracked / total) * 100) : 0;
 
-          {/* Cool graph: stacked bar (known % | need-practice %) */}
-          <div className="mb-8 max-w-md mx-auto">
-            <div className="h-8 rounded-full overflow-hidden flex bg-gray-700">
-              <div
-                className="h-full bg-emerald-500 transition-all duration-500"
-                style={{ width: `${knownPct}%` }}
-              />
-              <div
-                className="h-full bg-red-500 transition-all duration-500"
-                style={{ width: `${problemPct}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-2 text-sm text-gray-400">
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                Known
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500" />
-                Need practice
-              </span>
-            </div>
-          </div>
+            return (
+              <>
+                <div className="mb-6 text-left max-w-sm mx-auto space-y-2">
+                  <p className="text-emerald-400 font-medium">
+                    {sessionKnownCount} known ({knownPct}%)
+                  </p>
+                  <p className="text-red-400 font-medium">
+                    {sessionProblemCount} need more practice ({problemPct}%)
+                  </p>
+                  {problemWordsStillTracked > 0 && knownPct === 100 && (
+                    <p className="text-amber-300 text-sm">
+                      <span className="font-bold text-amber-200">{problemWordsStillTracked}</span> problem words
+                      (<span className="font-bold text-amber-200">{problemWordsStillTrackedPct}%</span>)
+                    </p>
+                  )}
+                </div>
+
+                {/* Cool graph: stacked bar (known % | need-practice %) */}
+                <div className="mb-8 max-w-md mx-auto">
+                  <div className="h-8 rounded-full overflow-hidden flex bg-gray-700">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-500"
+                      style={{ width: `${knownPct}%` }}
+                    />
+                    <div
+                      className="h-full bg-red-500 transition-all duration-500"
+                      style={{ width: `${problemPct}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-2 text-sm text-gray-400">
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                      Known
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-red-500" />
+                      Need practice
+                    </span>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           <div className="flex gap-4 justify-center">
               {(() => {

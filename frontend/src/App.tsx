@@ -6,6 +6,7 @@ import ManualInput from './components/ManualInput';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import TestTab from './components/TestTab';
+import GrammarTab from './components/GrammarTab';
 import { useVocabStore } from './stores/vocabStore';
 
 function App() {
@@ -76,18 +77,6 @@ function App() {
               My Words
             </NavLink>
             <NavLink
-              to="/flashcards"
-              className={({ isActive }) =>
-                `px-4 py-2 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
-                }`
-              }
-            >
-              Flashcards
-            </NavLink>
-            <NavLink
               to="/test"
               className={({ isActive }) =>
                 `px-4 py-2 rounded-lg transition-colors ${
@@ -98,6 +87,30 @@ function App() {
               }
             >
               Test
+            </NavLink>
+            <NavLink
+              to="/grammar"
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+            >
+              Grammar
+            </NavLink>
+            <NavLink
+              to="/flashcards"
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+            >
+              Flashcards
             </NavLink>
           </div>
         </div>
@@ -111,6 +124,7 @@ function App() {
           <Route path="/words" element={<WordList />} />
           <Route path="/flashcards" element={<Flashcards />} />
           <Route path="/test" element={<TestTab />} />
+          <Route path="/grammar" element={<GrammarTab />} />
         </Routes>
       </main>
     </div>

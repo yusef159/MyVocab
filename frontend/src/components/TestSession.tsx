@@ -45,18 +45,11 @@ interface SentenceWithFeedback {
     contextFeedback: { isAppropriate: boolean; issues: string[]; explanation: string };
     naturalnessFeedback: { isNatural: boolean; comment: string };
     scenarioFitFeedback?: { fitsScenario: boolean; comment: string };
+    /** AI-composed sentence using the words (scenario type only) */
+    modelSentence?: string;
     score: number;
     overallFeedback: string;
   };
-}
-
-interface SavedTestState {
-  wordIds: string[];
-  scenarios: Scenario[];
-  currentScenarioIndex: number;
-  sentencesByScenario: Record<string, SentenceWithFeedback[]>;
-  started: boolean;
-  testComplete: boolean;
 }
 
 interface TestSessionProps {
@@ -69,10 +62,6 @@ interface TestSessionProps {
     | 'typeWhatYouHear'
     | 'meaningToWordMC'
     | 'meaningTyping';
-}
-
-function getWordIdSet(words: Word[]): string {
-  return words.map(w => w.id).sort().join(',');
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -97,8 +86,6 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const [started, setStarted] = useState(false);
   const [testComplete, setTestComplete] = useState(false);
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
-  const [savedTestOffer, setSavedTestOffer] = useState<SavedTestState | null>(null);
-  const [hasCheckedStorage, setHasCheckedStorage] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceAccumulatedRef = useRef('');
@@ -131,64 +118,15 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const [mtwTypingInput, setMtwTypingInput] = useState('');
   const mtwTypingInputRef = useRef<HTMLInputElement>(null);
 
-  // Check for saved test on mount (same word set) — offer choice, don't auto-restore
-  useEffect(() => {
-    if (words.length < 2 || hasCheckedStorage) return;
-    try {
-      const raw = localStorage.getItem(TEST_SESSION_STORAGE_KEY);
-      setHasCheckedStorage(true);
-      if (!raw) return;
-      const saved: SavedTestState = JSON.parse(raw);
-      const savedIdSet = (saved.wordIds ?? []).sort().join(',');
-      const currentIdSet = getWordIdSet(words);
-      if (savedIdSet !== currentIdSet || !saved.started || !Array.isArray(saved.scenarios) || saved.scenarios.length === 0) return;
-      setSavedTestOffer(saved);
-    } catch {
-      setHasCheckedStorage(true);
-    }
-  }, [words, hasCheckedStorage]);
-
-  const handleContinueLastTest = useCallback(() => {
-    if (!savedTestOffer) return;
-    setScenarios(savedTestOffer.scenarios);
-    setCurrentScenarioIndex(Math.min(savedTestOffer.currentScenarioIndex ?? 0, savedTestOffer.scenarios.length - 1));
-    setSentencesByScenario(savedTestOffer.sentencesByScenario ?? {});
-    setStarted(true);
-    setTestComplete(!!savedTestOffer.testComplete);
-    setSavedTestOffer(null);
-  }, [savedTestOffer]);
-
-  const handleStartOver = useCallback(() => {
+  // When user leaves the test (Back), clear any saved state so next time they start from the beginning
+  const handleBack = useCallback(() => {
     try {
       localStorage.removeItem(TEST_SESSION_STORAGE_KEY);
     } catch {
       // ignore
     }
-    setSavedTestOffer(null);
-    setScenarios([]);
-    setSentencesByScenario({});
-    setCurrentScenarioIndex(0);
-    setStarted(false);
-    setTestComplete(false);
-  }, []);
-
-  // Persist test progress when it changes
-  useEffect(() => {
-    if (!started || scenarios.length === 0) return;
-    const state: SavedTestState = {
-      wordIds: words.map(w => w.id),
-      scenarios,
-      currentScenarioIndex,
-      sentencesByScenario,
-      started,
-      testComplete,
-    };
-    try {
-      localStorage.setItem(TEST_SESSION_STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // ignore
-    }
-  }, [words, started, scenarios, currentScenarioIndex, sentencesByScenario, testComplete]);
+    onBack();
+  }, [onBack]);
 
   const backToPicker = useCallback(() => {
     setActiveTestType(null);
@@ -295,15 +233,27 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     setSynonymScore(0);
     (async () => {
       const results: { word: Word; correct: string; options: string[] }[] = [];
-      const otherWords = words.map(w => w.english);
+      const sessionWordSet = new Set(words.map(w => w.english.toLowerCase()));
+      const allNonSessionWords = allWordsFromStore
+        .filter(w => !sessionWordSet.has(w.english.toLowerCase()))
+        .map(w => w.english);
       for (const word of shuffle(words).slice(0, Math.min(15, words.length))) {
         try {
           const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word.english)}&max=1`);
           const data = await res.json();
           const synonym = Array.isArray(data) && data[0]?.word ? data[0].word : null;
-          if (!synonym || otherWords.includes(synonym)) continue;
-          const wrongs = otherWords.filter(w => w !== word.english && w.toLowerCase() !== synonym.toLowerCase());
-          const options = shuffle([synonym, ...shuffle(wrongs).slice(0, 4)]);
+          if (!synonym) continue;
+
+          // Wrong options: random words from the user's vocabulary that
+          // are *not* part of this test session and are different from
+          // the correct synonym.
+          const wrongPool = allNonSessionWords.filter(
+            w => w.toLowerCase() !== synonym.toLowerCase()
+          );
+          if (wrongPool.length < 4) continue;
+
+          const wrongs = shuffle(wrongPool).slice(0, 4);
+          const options = shuffle([synonym, ...wrongs]);
           if (options.length === 5) results.push({ word, correct: synonym, options });
         } catch {
           // skip
@@ -314,7 +264,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       setSynonymLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [activeTestType, words]);
+  }, [activeTestType, words, allWordsFromStore]);
 
   // Auto-speak the current word when Type What You Hear shows a new word
   useEffect(() => {
@@ -464,50 +414,6 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
   }, []);
 
-  // Offer: continue last test or start over (when we have a saved test for this word set)
-  if (savedTestOffer && !started) {
-    const completedCount = Object.keys(savedTestOffer.sentencesByScenario ?? {}).length;
-    const totalScenarios = savedTestOffer.scenarios?.length ?? 0;
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Test Session</h2>
-          <button
-            onClick={onBack}
-            className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            Back
-          </button>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <p className="text-white font-medium mb-2">
-            {savedTestOffer.testComplete ? 'You have a previous test' : 'You have a test in progress'}
-          </p>
-          <p className="text-gray-400 text-sm mb-6">
-            {savedTestOffer.testComplete
-              ? `You previously completed all ${totalScenarios} scenarios. Do you want to view your results again or start a new test?`
-              : `You completed ${completedCount} of ${totalScenarios} scenarios. Do you want to continue where you left off or start over?`}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleContinueLastTest}
-              className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
-            >
-              {savedTestOffer.testComplete ? 'View my results' : 'Continue where I left off'}
-            </button>
-            <button
-              onClick={handleStartOver}
-              className="px-6 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors"
-            >
-              Start over
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Auto-start test type if initialTestType is provided
   useEffect(() => {
     if (initialTestType && !started && activeTestType === initialTestType && !showTestTypePicker) {
@@ -522,16 +428,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   // Not started: show test type picker when user clicked "Start test"
   if (!started && showTestTypePicker) {
     type T = NonNullable<typeof activeTestType>;
-    const scenariosLeft = savedTestOffer ? (savedTestOffer.scenarios?.length ?? 0) - Object.keys(savedTestOffer.sentencesByScenario ?? {}).length : 0;
     const testTypes: { id: T; label: string; description: string; icon: string; color: string; badge?: string }[] = [
-      ...(savedTestOffer ? [{
-        id: 'continue' as T,
-        label: 'Continue',
-        description: 'Resume your scenario test where you left off.',
-        icon: '\u25B6',
-        color: 'from-amber-500/20 to-amber-600/10 border-amber-500/40 hover:border-amber-400',
-        badge: savedTestOffer.testComplete ? 'View results' : `${Math.max(0, scenariosLeft)} left`,
-      }] : []),
       { id: 'scenario' as T, label: 'Scenario Writing', description: 'Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.', icon: '\u270D', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/40 hover:border-blue-400' },
       { id: 'multipleChoice' as T, label: 'Multiple Choice Meaning', description: 'Pick the correct meaning from 5 options for each word.', icon: '\u2611', color: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/40 hover:border-emerald-400' },
       { id: 'synonymMatch' as T, label: 'Word Synonym Match', description: 'Match each word to its synonym from 5 options.', icon: '\u21C4', color: 'from-purple-500/20 to-purple-600/10 border-purple-500/40 hover:border-purple-400' },
@@ -543,7 +440,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-white">Choose a test</h2>
-          <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">Back</button>
+          <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">Back</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {testTypes.map((t) => (
@@ -551,10 +448,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               key={t.id}
               type="button"
               onClick={() => {
-                if (t.id === 'continue') {
-                  handleContinueLastTest();
-                  setActiveTestType('scenario');
-                } else if (t.id === 'scenario') {
+                if (t.id === 'scenario') {
                   setActiveTestType('scenario');
                   handleStartTest();
                 } else {
@@ -611,7 +505,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning - Results</h2>
-            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
           <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
             <div className="text-center mb-6">
@@ -661,7 +555,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
             </div>
 
             <div className="flex gap-4 justify-center">
-              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+              <button onClick={handleBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
                 Back to test types
               </button>
             </div>
@@ -758,7 +652,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white">Meaning → Word (Options) - Results</h2>
             <button
-              onClick={onBack}
+              onClick={handleBack}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
             >
               Back
@@ -823,7 +717,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
             <div className="flex gap-4 justify-center">
               <button
-                onClick={onBack}
+                onClick={handleBack}
                 className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
               >
                 Back to test types
@@ -951,7 +845,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white">Type What You Hear - Results</h2>
-            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
           <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
             <div className="text-center mb-6">
@@ -1001,7 +895,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
             </div>
 
             <div className="flex gap-4 justify-center">
-              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+              <button onClick={handleBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
                 Back to test types
               </button>
             </div>
@@ -1109,7 +1003,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white">Type Word From Meaning - Results</h2>
             <button
-              onClick={onBack}
+              onClick={handleBack}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
             >
               Back
@@ -1174,7 +1068,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
             <div className="flex gap-4 justify-center">
               <button
-                onClick={onBack}
+                onClick={handleBack}
                 className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
               >
                 Back to test types
@@ -1312,7 +1206,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white">Word Synonym Match - Results</h2>
-            <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+            <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
           <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
             <div className="text-center mb-6">
@@ -1362,7 +1256,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
             </div>
 
             <div className="flex gap-4 justify-center">
-              <button onClick={onBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
+              <button onClick={handleBack} className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors">
                 Back to test types
               </button>
             </div>
@@ -1415,7 +1309,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-white">Test Session</h2>
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
           >
             Back
@@ -1451,7 +1345,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-white">Test complete</h2>
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
           >
             Back
@@ -1522,7 +1416,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-white">Test Session</h2>
-          <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
           <svg className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-4" viewBox="0 0 24 24">
@@ -1541,7 +1435,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-white">Test Session</h2>
-          <button onClick={onBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
+          <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <p className="text-gray-400">No scenario loaded.</p>
       </div>
@@ -1553,7 +1447,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold text-white">Test Session</h2>
         <button
-          onClick={onBack}
+          onClick={handleBack}
           className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
         >
           Back
@@ -1723,6 +1617,23 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                   </div>
                   <div className="rounded-xl bg-emerald-500/20 border border-emerald-400/40 p-4">
                     <p className="text-emerald-50 text-lg leading-relaxed">"{g.corrections}"</p>
+                  </div>
+                </div>
+              )}
+              {/* AI's example sentence (scenario type): model sentence using the words, below correction */}
+              {item.feedback.modelSentence && (
+                <div className="rounded-2xl border-2 border-sky-400/60 bg-sky-500/20 p-5 shadow-md ring-2 ring-sky-400/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-sky-500/40 text-sky-100 text-2xl font-bold shadow-inner">
+                      ✦
+                    </span>
+                    <div>
+                      <p className="text-sky-300 font-bold text-sm uppercase tracking-wider">AI&apos;s example</p>
+                      <p className="text-sky-200/90 text-xs">Model sentence using the words above</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-sky-500/15 border border-sky-400/30 p-4">
+                    <p className="text-sky-50 text-lg leading-relaxed">"{item.feedback.modelSentence}"</p>
                   </div>
                 </div>
               )}

@@ -62,3 +62,87 @@ export interface SuggestMeaningsRequest {
 export interface SuggestMeaningsResponse {
   suggestion: WordSuggestion;
 }
+
+// -----------------------------
+// Grammar learning types
+// -----------------------------
+
+export type GrammarLevelId = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+export type GrammarExerciseType = 'mcq' | 'fillBlank' | 'rewrite' | 'freeSentence';
+
+export type GrammarSkillStatus = 'not_started' | 'in_progress' | 'mastered';
+
+export interface GrammarSkill {
+  id: string;
+  levelId: GrammarLevelId;
+  title: string;
+  description?: string;
+  aiTopicHint?: string;
+  order?: number;
+}
+
+export interface GrammarLessonExample {
+  sentence: string;
+  explanation?: string;
+}
+
+export interface GrammarLessonSection {
+  title: string;
+  body: string;
+  examples?: GrammarLessonExample[];
+  commonMistakes?: string[];
+}
+
+export interface GrammarLesson {
+  skillId: string;
+  levelId: GrammarLevelId;
+  intro?: string;
+  sections: GrammarLessonSection[];
+}
+
+export interface GrammarExerciseOption {
+  id: string;
+  text: string;
+}
+
+export interface GrammarExercise {
+  id: string;
+  skillId: string;
+  levelId: GrammarLevelId;
+  type: GrammarExerciseType;
+  prompt: string;
+  options?: GrammarExerciseOption[];
+  correctOptionId?: string;
+  correctAnswerText?: string;
+  explanation?: string;
+}
+
+export interface GrammarProgress {
+  skillId: string;
+  levelId: GrammarLevelId;
+  attempts: number;
+  correct: number;
+  masteryPercent: number;
+  status: GrammarSkillStatus;
+  lastResult?: 'correct' | 'incorrect';
+  lastUpdated?: string; // ISO date string
+}
+
+export interface GrammarLevelSummary {
+  id: GrammarLevelId;
+  title: string;
+  description?: string;
+  skills: GrammarSkill[];
+}
+
+export interface GrammarCatalogResponse {
+  levels: GrammarLevelSummary[];
+}
+
+export interface GrammarAnswerEvaluation {
+  isCorrect: boolean;
+  score: number;
+  feedback: string;
+  correctedAnswer?: string;
+}
