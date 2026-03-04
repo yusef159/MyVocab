@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
 import type { Word } from '../types';
@@ -181,6 +181,15 @@ export default function Flashcards() {
   const [sessionProblemCount, setSessionProblemCount] = useState(0);
   const [testSessionWords, setTestSessionWords] = useState<Word[] | null>(null);
   const [isRiskReminderSession, setIsRiskReminderSession] = useState(false);
+  const [lastCompletedSession, setLastCompletedSession] = useState<{
+    words: Word[];
+    filterType: FilterType;
+    dateRange: number;
+    savedAt: string;
+    knownCount: number;
+    problemCount: number;
+    totalWords: number;
+  } | null>(null);
 
   // Streak notification state
   const [showStreakMessage, setShowStreakMessage] = useState(false);
@@ -189,6 +198,8 @@ export default function Flashcards() {
   // Audio state: word auto-speak, and sentence speak (separate, default muted)
   const [isMuted, setIsMuted] = useState(false);
   const [isSentenceMuted, setIsSentenceMuted] = useState(true);
+  const lastSpokenWordRef = useRef<string | null>(null);
+  const lastSpokenSentenceRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadWords();
@@ -272,21 +283,30 @@ export default function Flashcards() {
     }
   }, [filterType]);
 
-  // Auto-speak word when card changes (if not muted)
+  // Auto-speak word when card changes (if not muted), but avoid speaking the same card twice
   useEffect(() => {
     const word = shuffledWords[currentIndex];
-    if (word && sessionStarted && !sessionComplete && !isMuted) {
-      speakText(word.english);
-    }
+    if (!word || !sessionStarted || sessionComplete || isMuted) return;
+
+    const key = `${word.id}-${currentIndex}`;
+    if (lastSpokenWordRef.current === key) return;
+
+    lastSpokenWordRef.current = key;
+    speakText(word.english);
   }, [currentIndex, sessionStarted, sessionComplete, isMuted, shuffledWords]);
 
-  // Auto-speak first sentence when card is flipped (if sentence speak not muted)
+  // Auto-speak first sentence when card is flipped (if sentence speak not muted),
+  // but avoid speaking the same card's sentence twice automatically.
   useEffect(() => {
     const word = shuffledWords[currentIndex];
     const firstSentence = word?.exampleSentences?.filter(Boolean)[0];
-    if (isFlipped && firstSentence && sessionStarted && !sessionComplete && !isSentenceMuted) {
-      speakText(firstSentence);
-    }
+    if (!isFlipped || !firstSentence || !sessionStarted || sessionComplete || isSentenceMuted) return;
+
+    const key = `${word.id}-${currentIndex}`;
+    if (lastSpokenSentenceRef.current === key) return;
+
+    lastSpokenSentenceRef.current = key;
+    speakText(firstSentence);
   }, [isFlipped, currentIndex, shuffledWords, sessionStarted, sessionComplete, isSentenceMuted]);
 
   // Calculate word counts for each filter option
@@ -346,6 +366,18 @@ export default function Flashcards() {
 
   const currentWord = shuffledWords[currentIndex];
 
+  // Keep shuffledWords in sync with latest word data (status/counts) from the store
+  useEffect(() => {
+    if (!sessionStarted || shuffledWords.length === 0) return;
+    const wordMap = new Map(words.map(w => [w.id, w]));
+    setShuffledWords(prev =>
+      prev.map(w => {
+        const latest = wordMap.get(w.id);
+        return latest ?? w;
+      })
+    );
+  }, [words, sessionStarted]);
+
   const handleFlip = () => {
     setIsFlipped(!isFlipped);
   };
@@ -377,11 +409,20 @@ export default function Flashcards() {
           problemCount: counts?.problemCount ?? 0,
         };
         saveLastCompletedSession(completedSession);
+        setLastCompletedSession({
+          words: shuffledWords,
+          filterType,
+          dateRange,
+          savedAt: completedSession.savedAt,
+          knownCount: completedSession.knownCount,
+          problemCount: completedSession.problemCount,
+          totalWords: shuffledWords.length,
+        });
         setSessionComplete(true);
         clearSavedSession();
       }
     },
-    [currentIndex, shuffledWords, filterType, dateRange]
+    [currentIndex, shuffledWords, filterType, dateRange, setLastCompletedSession]
   );
 
   const handleKnow = async () => {
@@ -447,6 +488,8 @@ export default function Flashcards() {
       const requested = Math.max(1, Number(sessionSize) || 20);
       const takeCount = Math.min(requested, filtered.length);
       const shuffled = shuffleArray(filtered).slice(0, takeCount);
+      lastSpokenWordRef.current = null;
+      lastSpokenSentenceRef.current = null;
       setShuffledWords(shuffled);
       setCurrentIndex(0);
       setIsFlipped(false);
@@ -473,12 +516,16 @@ export default function Flashcards() {
     setIsFlipped(false);
     setSessionKnownCount(0);
     setSessionProblemCount(0);
+    lastSpokenWordRef.current = null;
+    lastSpokenSentenceRef.current = null;
   };
 
   const regenerateCurrentSession = () => {
     if (shuffledWords.length === 0) return;
     // Shuffle the current session's words to change the order
     const shuffled = shuffleArray(shuffledWords);
+    lastSpokenWordRef.current = null;
+    lastSpokenSentenceRef.current = null;
     setShuffledWords(shuffled);
     setCurrentIndex(0);
     setIsFlipped(false);
@@ -544,22 +591,28 @@ export default function Flashcards() {
     };
   }, [words]);
 
-  // Get last completed session for display and regeneration
-  const lastCompletedSession = useMemo(() => {
+  // Load last completed session for display and regeneration
+  useEffect(() => {
     const saved = getLastCompletedSession();
-    if (!saved || !saved.wordIds.length) return null;
+    if (!saved || !saved.wordIds.length) {
+      setLastCompletedSession(null);
+      return;
+    }
     const wordMap = new Map(words.map(w => [w.id, w]));
     const ordered = saved.wordIds.map(id => wordMap.get(id)).filter(Boolean) as Word[];
-    if (ordered.length === 0) return null;
-    return {
+    if (ordered.length === 0) {
+      setLastCompletedSession(null);
+      return;
+    }
+    setLastCompletedSession({
       words: ordered,
       filterType: saved.filterType,
       dateRange: saved.dateRange,
       savedAt: saved.savedAt,
       knownCount: saved.knownCount,
       problemCount: saved.problemCount,
-      totalWords: ordered.length,
-    };
+      totalWords: saved.wordIds.length,
+    });
   }, [words]);
 
   const continueLastSession = () => {
@@ -570,6 +623,8 @@ export default function Flashcards() {
     setSessionComplete(false);
     setSessionKnownCount(resumableSession.knownCount);
     setSessionProblemCount(resumableSession.problemCount);
+    lastSpokenWordRef.current = null;
+    lastSpokenSentenceRef.current = null;
     setSessionStarted(true);
   };
 
@@ -580,6 +635,8 @@ export default function Flashcards() {
     setDateRange(lastCompletedSession.dateRange);
     // Shuffle the words so the order is different each time
     const shuffled = shuffleArray(lastCompletedSession.words);
+    lastSpokenWordRef.current = null;
+    lastSpokenSentenceRef.current = null;
     setShuffledWords(shuffled);
     setCurrentIndex(0);
     setIsFlipped(false);
@@ -1199,7 +1256,11 @@ export default function Flashcards() {
             // Some words might still be "problem" in your overall vocabulary even
             // if this session was answered 100% correctly (problem words need a
             // streak of correct answers before they become "known").
-            const problemWordsStillTracked = shuffledWords.filter(word => word.status === 'problem').length;
+            const wordMap = new Map(words.map(w => [w.id, w]));
+            const problemWordsStillTracked = shuffledWords.filter(word => {
+              const latest = wordMap.get(word.id) ?? word;
+              return latest.status === 'problem';
+            }).length;
             const problemWordsStillTrackedPct =
               total > 0 ? Math.round((problemWordsStillTracked / total) * 100) : 0;
 
