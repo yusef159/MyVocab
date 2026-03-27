@@ -233,7 +233,7 @@ export default function Dashboard() {
           <p className="text-blue-400 text-sm uppercase tracking-wide">New</p>
           <p className="text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
         </div>
-        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30">
+        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30 col-span-2 md:col-span-4">
           <p className="text-purple-400 text-sm uppercase tracking-wide">
             Grammar Skills
           </p>

@@ -5,19 +5,26 @@ export interface ScenarioGenerationRequest {
     arabicMeanings: string[];
     exampleSentence: string;
   }>;
+  /** Number of words per scenario: 1, 2, or 3. Each scenario gets exactly this many words. */
+  wordsPerScenario: 1 | 2 | 3;
 }
 
 export interface GeneratedScenario {
   scenarioId: string;
   description: string; // 2–4 words, short real-life scenario
-  wordIds: string[];   // 2–4 word IDs to use in this scenario
+  wordIds: string[];   // 1–3 word IDs (per request.wordsPerScenario)
+}
+
+function wordsPerScenarioText(n: 1 | 2 | 3): string {
+  return n === 1 ? 'exactly 1 word' : n === 2 ? 'exactly 2 words' : 'exactly 3 words';
 }
 
 export const scenarioGenerationPrompt = (request: ScenarioGenerationRequest): string => {
-  const { words } = request;
+  const { words, wordsPerScenario } = request;
   const wordsList = words.map(w =>
     `- id: "${w.id}", "${w.english}" (${w.arabicMeanings.join(', ')})`
   ).join('\n');
+  const wordCountRule = wordsPerScenarioText(wordsPerScenario);
 
   return `You are an English language tutor creating a scenario-based vocabulary test.
 
@@ -27,7 +34,7 @@ ${wordsList}
 RULES:
 1. Create exactly 4–6 short real-life scenarios.
 2. Each scenario has a "description": use ONLY 2–4 words (e.g. "At the airport", "Planning a weekend trip", "Job interview"). No full sentences.
-3. Assign 2–4 words to each scenario via "wordIds". The learner will write ONE sentence that uses all of these words together. Do NOT use all session words in one scenario.
+3. Assign ${wordCountRule} to each scenario via "wordIds". Each scenario must have exactly ${wordsPerScenario} word ID(s). The learner will write ONE sentence that uses all of these words together. Do NOT use all session words in one scenario.
 4. Distribute the words across scenarios so each word appears in at least one scenario; words may repeat in different scenarios if needed.
 5. Scenarios should be varied (e.g. travel, work, daily life, shopping, health).
 
@@ -47,5 +54,5 @@ Return ONLY a JSON object in this format (no markdown, no code block):
   ]
 }
 
-Use the exact "id" values from the word list above in each "wordIds" array. Create 4–6 scenarios.`;
+Use the exact "id" values from the word list above in each "wordIds" array. Every "wordIds" array must have exactly ${wordsPerScenario} id(s). Create 4–6 scenarios.`;
 };

@@ -451,6 +451,11 @@ export default function Flashcards() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       switch (e.key) {
+        case ' ':
+        case 'Spacebar':
+          e.preventDefault();
+          handleSpeakSentence();
+          break;
         case 'ArrowRight':
           e.preventDefault();
           handleKnow();
@@ -1563,7 +1568,7 @@ export default function Flashcards() {
 
       {/* Keyboard shortcut hint (always available) */}
       <p className="text-center text-gray-500 text-sm">
-        Shortcuts: ← I don't know · → I know · ↓ Flip card
+        Shortcuts: ← I don't know · → I know · ↓ Flip card · Space Play sentence
       </p>
 
       {/* Action Buttons */}

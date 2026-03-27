@@ -63,6 +63,39 @@ export interface SuggestMeaningsResponse {
   suggestion: WordSuggestion;
 }
 
+export interface ReadingArticle {
+  title: string;
+  article: string;
+  usedWordIds: string[];
+  wordCount: number;
+}
+
+export type ReadingArticleLength = 'short' | 'medium' | 'large';
+
+export interface ReadingFluencyMetrics {
+  fillerCount: number;
+  fillerTerms: string[];
+  estimatedWpm?: number;
+  longPauseCount: number;
+  veryLongPauseCount: number;
+  maxPauseSeconds?: number;
+  missingExpectedWords: string[];
+}
+
+export interface ReadingMispronouncedWord {
+  word: string;
+  reason: string;
+}
+
+export interface ReadingFluencyEvaluation {
+  score: number;
+  transcript: string;
+  fluencySummary: string;
+  feedback: string[];
+  mispronouncedWords: ReadingMispronouncedWord[];
+  metrics: ReadingFluencyMetrics;
+}
+
 // -----------------------------
 // Grammar learning types
 // -----------------------------

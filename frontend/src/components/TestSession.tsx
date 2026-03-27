@@ -90,6 +90,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceAccumulatedRef = useRef('');
   const [showTestTypePicker, setShowTestTypePicker] = useState(!initialTestType);
+  const [scenarioWordsPerScenario, setScenarioWordsPerScenario] = useState<1 | 2 | 3>(2);
   type ActiveTestType =
     | null
     | 'continue'
@@ -283,15 +284,16 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   const hasFeedbackForCurrent = sentencesForCurrent.length >= 1;
   const SENTENCE_CHAR_LIMIT = 500;
 
-  const handleStartTest = async () => {
-    if (words.length < 2) {
-      setScenarioError('Add at least 2 words to run the test.');
+  const handleStartTest = async (wordsPerScenario?: 1 | 2 | 3) => {
+    const wps = wordsPerScenario ?? scenarioWordsPerScenario;
+    if (words.length < (wps === 1 ? 1 : 2)) {
+      setScenarioError(wps === 1 ? 'Add at least 1 word to run the test.' : 'Add at least 2 words to run the test.');
       return;
     }
     setIsLoadingScenarios(true);
     setScenarioError(null);
     try {
-      const list = await generateScenarios(words);
+      const list = await generateScenarios(words, wps);
       if (list.length === 0) {
         setScenarioError('Could not generate scenarios. Try again.');
         return;
@@ -414,13 +416,10 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
   }, []);
 
-  // Auto-start test type if initialTestType is provided
+  // Auto-start test type if initialTestType is provided (except scenario: user picks words per scenario first)
   useEffect(() => {
-    if (initialTestType && !started && activeTestType === initialTestType && !showTestTypePicker) {
-      if (initialTestType === 'scenario' && words.length >= 2) {
-        handleStartTest();
-      }
-      // For other test types, they start automatically when activeTestType is set
+    if (initialTestType && !started && activeTestType === initialTestType && !showTestTypePicker && initialTestType !== 'scenario') {
+      // For non-scenario types, start is implicit when activeTestType is set
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTestType, started, activeTestType, showTestTypePicker, words.length]);
@@ -429,7 +428,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (!started && showTestTypePicker) {
     type T = NonNullable<typeof activeTestType>;
     const testTypes: { id: T; label: string; description: string; icon: string; color: string; badge?: string }[] = [
-      { id: 'scenario' as T, label: 'Scenario Writing', description: 'Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.', icon: '\u270D', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/40 hover:border-blue-400' },
+      { id: 'scenario' as T, label: 'Scenario Writing', description: 'Write sentences for 4-6 scenarios using 1, 2, or 3 words each (you choose). Get AI feedback.', icon: '\u270D', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/40 hover:border-blue-400' },
       { id: 'multipleChoice' as T, label: 'Multiple Choice Meaning', description: 'Pick the correct meaning from 5 options for each word.', icon: '\u2611', color: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/40 hover:border-emerald-400' },
       { id: 'synonymMatch' as T, label: 'Word Synonym Match', description: 'Match each word to its synonym from 5 options.', icon: '\u21C4', color: 'from-purple-500/20 to-purple-600/10 border-purple-500/40 hover:border-purple-400' },
       { id: 'meaningToWordMC' as T, label: 'Meaning → Word (Options)', description: 'See an Arabic meaning and choose the correct English word from 5 options.', icon: '\uD83D\uDD20', color: 'from-teal-500/20 to-teal-600/10 border-teal-500/40 hover:border-teal-400' },
@@ -450,7 +449,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               onClick={() => {
                 if (t.id === 'scenario') {
                   setActiveTestType('scenario');
-                  handleStartTest();
+                  // Don't start yet; user will pick words per scenario on next screen
                 } else {
                   setActiveTestType(t.id);
                 }
@@ -464,6 +463,52 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               {t.badge && <span className="text-xs font-medium text-amber-300 bg-amber-500/20 px-2 py-1 rounded w-fit">{t.badge}</span>}
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Scenario Writing: choose words per scenario (1, 2, or 3) then start
+  if (activeTestType === 'scenario' && !started && !isLoadingScenarios) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-white">Scenario Writing</h2>
+          <button onClick={() => setShowTestTypePicker(true)} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
+            Back
+          </button>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          <p className="text-gray-300 mb-4">Choose how many words each scenario should use. You will write one sentence per scenario using all of those words.</p>
+          <div className="flex flex-wrap gap-3 mb-6">
+            {([1, 2, 3] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setScenarioWordsPerScenario(n)}
+                className={`px-5 py-3 rounded-xl border-2 font-semibold transition-all ${
+                  scenarioWordsPerScenario === n
+                    ? 'border-blue-400 bg-blue-500/30 text-white'
+                    : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
+                }`}
+              >
+                {n} word{n !== 1 ? 's' : ''} per scenario
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => handleStartTest(scenarioWordsPerScenario)}
+            disabled={words.length < (scenarioWordsPerScenario === 1 ? 1 : 2)}
+            className="w-full px-6 py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Start test
+          </button>
+          {words.length < (scenarioWordsPerScenario === 1 ? 1 : 2) && (
+            <p className="text-amber-400 text-sm mt-2">
+              Add at least {scenarioWordsPerScenario === 1 ? '1 word' : '2 words'} to run this test.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -1318,7 +1363,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
           <p className="text-gray-300 mb-4">
-            Scenario-based test: you’ll get 4–6 scenarios, each with 2–4 words. Write <strong>one sentence</strong> that uses <strong>all</strong> the words for that scenario. After you submit, you’ll get feedback on grammar, meaning, and naturalness with a score out of 100. Then you can move to the next scenario or pick another from the list.
+            Scenario-based test: you’ll get 4–6 scenarios, each with 1, 2, or 3 words (you choose). Write <strong>one sentence</strong> that uses <strong>all</strong> the words for that scenario. After you submit, you’ll get feedback on grammar, meaning, and naturalness with a score out of 100. Then you can move to the next scenario or pick another from the list.
           </p>
           {scenarioError && (
             <p className="text-red-400 mb-4">{scenarioError}</p>

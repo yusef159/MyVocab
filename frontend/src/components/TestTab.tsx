@@ -292,7 +292,7 @@ export default function TestTab() {
                 )}
               </div>
               <h4 className={`text-lg font-bold ${selectedTestType === 'scenario' ? 'text-white' : 'text-gray-300'}`}>Scenario Writing</h4>
-              <p className={`text-sm flex-1 ${selectedTestType === 'scenario' ? 'text-gray-200' : 'text-gray-400'}`}>Write sentences for 4-6 scenarios using 2-4 words each. Get AI feedback.</p>
+              <p className={`text-sm flex-1 ${selectedTestType === 'scenario' ? 'text-gray-200' : 'text-gray-400'}`}>Write sentences for 4-6 scenarios using 1, 2, or 3 words each (you choose). Get AI feedback.</p>
             </button>
 
             <button

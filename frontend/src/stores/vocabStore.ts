@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import axios from 'axios';
-import type { Word, WordSuggestion, StreakData, WordReviewEvent } from '../types';
+import type {
+  Word,
+  WordSuggestion,
+  StreakData,
+  WordReviewEvent,
+  ReadingArticle,
+  ReadingFluencyEvaluation,
+  ReadingArticleLength,
+} from '../types';
 import {
   getAllWords,
   getWordsByStatus,
@@ -21,6 +29,7 @@ import {
 
 // Use relative URL since frontend is served from the same server as the API
 const API_URL = '';
+const MAX_READING_ARTICLE_WORDS = 120;
 
 interface VocabState {
   // Words
@@ -83,7 +92,17 @@ interface VocabState {
   }>;
   generateContextPrompt: (words: Word[]) => Promise<{ prompt: string; suggestedFocus?: string[]; context?: string }>;
 
-  generateScenarios: (words: Word[]) => Promise<Array<{ scenarioId: string; description: string; wordIds: string[] }>>;
+  generateScenarios: (words: Word[], wordsPerScenario?: 1 | 2 | 3) => Promise<Array<{ scenarioId: string; description: string; wordIds: string[] }>>;
+  generateReadingArticleFromKnownWords: (length: ReadingArticleLength) => Promise<{
+    article: ReadingArticle;
+    expectedWords: string[];
+  }>;
+  evaluateReadingFluency: (
+    audioBlob: Blob,
+    articleText: string,
+    expectedWords: string[],
+    audioDurationSeconds?: number
+  ) => Promise<ReadingFluencyEvaluation>;
 }
 
 export const useVocabStore = create<VocabState>((set, get) => ({
@@ -339,7 +358,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  generateScenarios: async (words) => {
+  generateScenarios: async (words, wordsPerScenario = 2) => {
     try {
       const response = await axios.post(`${API_URL}/api/words/test/scenarios`, {
         words: words.map(w => ({
@@ -348,11 +367,88 @@ export const useVocabStore = create<VocabState>((set, get) => ({
           arabicMeanings: w.arabicMeanings,
           exampleSentence: (w.exampleSentences && w.exampleSentences[0]) || '',
         })),
+        wordsPerScenario,
       });
       return response.data.scenarios ?? [];
     } catch (error) {
       console.error('Error generating scenarios:', error);
       throw new Error('Failed to generate scenarios');
+    }
+  },
+
+  generateReadingArticleFromKnownWords: async (length) => {
+    try {
+      if (get().words.length === 0) {
+        await get().loadWords();
+      }
+
+      const knownWords = get().words.filter((w) => w.status === 'known');
+      if (knownWords.length === 0) {
+        throw new Error('No known words available. Mark words as known first.');
+      }
+
+      // Avoid oversized payloads and overly long prompts for article generation.
+      const wordsForArticle = knownWords.slice(0, MAX_READING_ARTICLE_WORDS);
+
+      const maxWordsByLength: Record<ReadingArticleLength, 80 | 140 | 200> = {
+        short: 80,
+        medium: 140,
+        large: 200,
+      };
+
+      const response = await axios.post(`${API_URL}/api/words/reading/article`, {
+        words: wordsForArticle.map((w) => ({
+          id: w.id,
+          english: w.english,
+          arabicMeanings: w.arabicMeanings,
+          exampleSentence: (w.exampleSentences && w.exampleSentences[0]) || '',
+        })),
+        maxWords: maxWordsByLength[length],
+      });
+
+      const article = response.data.article as ReadingArticle;
+      const usedWordsFromIds = wordsForArticle
+        .filter((w) => article.usedWordIds.includes(w.id))
+        .map((w) => w.english);
+      const expectedWords = usedWordsFromIds.length > 0
+        ? usedWordsFromIds
+        : wordsForArticle.map((w) => w.english);
+
+      return {
+        article,
+        expectedWords,
+      };
+    } catch (error) {
+      console.error('Error generating reading article:', error);
+      throw new Error('Failed to generate reading article');
+    }
+  },
+
+  evaluateReadingFluency: async (
+    audioBlob,
+    articleText,
+    expectedWords,
+    audioDurationSeconds
+  ) => {
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'reading-audio.webm');
+      formData.append('articleText', articleText);
+      formData.append('expectedWords', JSON.stringify(expectedWords));
+      if (typeof audioDurationSeconds === 'number' && Number.isFinite(audioDurationSeconds)) {
+        formData.append('audioDurationSeconds', String(audioDurationSeconds));
+      }
+
+      const response = await axios.post(`${API_URL}/api/words/reading/evaluate`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data.evaluation as ReadingFluencyEvaluation;
+    } catch (error) {
+      console.error('Error evaluating reading fluency:', error);
+      throw new Error('Failed to evaluate reading fluency');
     }
   },
 }));

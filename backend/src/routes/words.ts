@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { generateWords, suggestMeanings } from '../services/openai.js';
 import { analyzeSentence } from '../services/sentenceFeedback.js';
 import { generateContextPrompt } from '../services/contextPrompt.js';
 import { generateScenarios } from '../services/scenarioGeneration.js';
+import { generateReadingArticle } from '../services/readingArticle.js';
+import { evaluateReadingFluency } from '../services/readingFluency.js';
 
 const router = Router();
 
@@ -44,6 +47,30 @@ const scenariosSchema = z.object({
     arabicMeanings: z.array(z.string()),
     exampleSentence: z.string(),
   })),
+  wordsPerScenario: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional().default(2),
+});
+
+const readingArticleSchema = z.object({
+  words: z.array(
+    z.object({
+      id: z.string(),
+      english: z.string(),
+      arabicMeanings: z.array(z.string()),
+      exampleSentence: z.string(),
+    })
+  ).min(1).max(150),
+  maxWords: z.union([z.literal(80), z.literal(140), z.literal(200)]).optional().default(200),
+});
+
+const readingEvaluateSchema = z.object({
+  articleText: z.string().min(1).max(3000),
+  expectedWords: z.array(z.string().min(1)).min(1),
+  audioDurationSeconds: z.number().positive().max(3600).optional(),
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 router.post('/generate', async (req, res) => {
@@ -136,13 +163,100 @@ router.post('/test/scenarios', async (req, res) => {
       });
     }
 
-    const { words } = validation.data;
-    const scenarios = await generateScenarios({ words });
+    const { words, wordsPerScenario } = validation.data;
+    const scenarios = await generateScenarios({ words, wordsPerScenario });
 
     res.json({ scenarios });
   } catch (error) {
     console.error('Error generating scenarios:', error);
     res.status(500).json({ error: 'Failed to generate scenarios' });
+  }
+});
+
+router.post('/reading/article', async (req, res) => {
+  try {
+    const validation = readingArticleSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors
+      });
+    }
+
+    const { words, maxWords } = validation.data;
+    const article = await generateReadingArticle({ words, maxWords });
+
+    res.json({ article });
+  } catch (error) {
+    console.error('Error generating reading article:', error);
+    res.status(500).json({ error: 'Failed to generate reading article' });
+  }
+});
+
+router.post('/reading/evaluate', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing audio file' });
+    }
+
+    const contentType = req.file.mimetype || '';
+    if (!contentType.startsWith('audio/')) {
+      return res.status(400).json({ error: 'Invalid audio type' });
+    }
+
+    const expectedWordsRaw = req.body.expectedWords;
+    let expectedWords: string[] = [];
+    if (Array.isArray(expectedWordsRaw)) {
+      expectedWords = expectedWordsRaw.filter((w): w is string => typeof w === 'string');
+    } else if (typeof expectedWordsRaw === 'string') {
+      try {
+        const parsed = JSON.parse(expectedWordsRaw);
+        if (Array.isArray(parsed)) {
+          expectedWords = parsed.filter((w): w is string => typeof w === 'string');
+        }
+      } catch {
+        expectedWords = expectedWordsRaw
+          .split(',')
+          .map((w) => w.trim())
+          .filter(Boolean);
+      }
+    }
+
+    const audioDurationRaw = req.body.audioDurationSeconds;
+    const audioDurationSeconds =
+      typeof audioDurationRaw === 'string' && audioDurationRaw.trim()
+        ? Number(audioDurationRaw)
+        : undefined;
+
+    const parsedBody = readingEvaluateSchema.safeParse({
+      articleText: req.body.articleText,
+      expectedWords,
+      audioDurationSeconds:
+        typeof audioDurationSeconds === 'number' && !Number.isNaN(audioDurationSeconds)
+          ? audioDurationSeconds
+          : undefined,
+    });
+
+    if (!parsedBody.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: parsedBody.error.errors
+      });
+    }
+
+    const evaluation = await evaluateReadingFluency({
+      audioBuffer: req.file.buffer,
+      mimeType: req.file.mimetype || 'audio/webm',
+      fileName: req.file.originalname || 'reading-audio.webm',
+      articleText: parsedBody.data.articleText,
+      expectedWords: parsedBody.data.expectedWords,
+      audioDurationSeconds: parsedBody.data.audioDurationSeconds,
+    });
+
+    res.json({ evaluation });
+  } catch (error) {
+    console.error('Error evaluating reading fluency:', error);
+    res.status(500).json({ error: 'Failed to evaluate reading fluency' });
   }
 });
 

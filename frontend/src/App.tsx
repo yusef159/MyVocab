@@ -7,6 +7,7 @@ import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import TestTab from './components/TestTab';
 import GrammarTab from './components/GrammarTab';
+import ReadingFluencyTab from './components/ReadingFluencyTab';
 import { useVocabStore } from './stores/vocabStore';
 
 function App() {
@@ -112,6 +113,18 @@ function App() {
             >
               Flashcards
             </NavLink>
+            <NavLink
+              to="/reading"
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+            >
+              Reading Fluency
+            </NavLink>
           </div>
         </div>
       </nav>
@@ -125,6 +138,7 @@ function App() {
           <Route path="/flashcards" element={<Flashcards />} />
           <Route path="/test" element={<TestTab />} />
           <Route path="/grammar" element={<GrammarTab />} />
+          <Route path="/reading" element={<ReadingFluencyTab />} />
         </Routes>
       </main>
     </div>

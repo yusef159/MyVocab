@@ -39,6 +39,7 @@ export async function generateScenarios(
     const scenarios: unknown[] = Array.isArray(parsed.scenarios) ? parsed.scenarios : [];
 
     const validIds = new Set(request.words.map(w => w.id));
+    const expectedLen = request.wordsPerScenario ?? 2;
     return scenarios
       .filter((s): s is GeneratedScenario => {
         if (!s || typeof s !== 'object') return false;
@@ -46,7 +47,7 @@ export async function generateScenarios(
         if (typeof sc.description !== 'string' || !Array.isArray(sc.wordIds)) return false;
         const descWords = (sc.description as string).trim().split(/\s+/).length;
         if (descWords < 2 || descWords > 4) return false;
-        if (sc.wordIds.length < 2 || sc.wordIds.length > 4) return false;
+        if (sc.wordIds.length !== expectedLen) return false;
         if (!sc.wordIds.every((id: unknown) => typeof id === 'string' && validIds.has(id))) return false;
         return true;
       })
