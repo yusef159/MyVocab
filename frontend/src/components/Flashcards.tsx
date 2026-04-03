@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
+import { getRiskWords } from '../db';
 import type { Word } from '../types';
 import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize, saveLastCompletedSession, getLastCompletedSession } from '../lib/flashcardSessionStorage';
 import { setRiskSessionCompletedToday } from './RiskWordsReminder';
@@ -75,7 +76,7 @@ function highlightWordInSentence(sentence: string, word: string): JSX.Element {
   );
 }
 
-type FilterType = 'all' | 'new' | 'problem' | 'date';
+type FilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
 type ProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
 
 const DATE_OPTIONS = [
@@ -117,6 +118,7 @@ function filterByProgress(words: Word[], progressFilter: ProgressFilter): Word[]
 // Filter words based on selection
 function filterWords(
   words: Word[],
+  riskWords: Word[],
   filterType: FilterType,
   dateRange: number,
   progressFilter?: ProgressFilter
@@ -143,6 +145,8 @@ function filterWords(
       }
       return words;
     }
+    case 'risk':
+      return riskWords;
     case 'date': {
       const cutoff =
         dateRange === 0
@@ -171,6 +175,7 @@ export default function Flashcards() {
   const [sessionSize, setSessionSize] = useState(getSavedSessionSize);
   const [problemProgressFilter, setProblemProgressFilter] = useState<ProgressFilter>('all');
   const [allWordsProgressFilter, setAllWordsProgressFilter] = useState<ProgressFilter>('all');
+  const [riskWords, setRiskWords] = useState<Word[]>([]);
 
   // Flashcard session state
   const [shuffledWords, setShuffledWords] = useState<Word[]>([]);
@@ -206,6 +211,25 @@ export default function Flashcards() {
     loadStreak();
   }, [loadWords, loadStreak]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getRiskWords()
+      .then((items) => {
+        if (!cancelled) {
+          setRiskWords(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRiskWords([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [words]);
+
   // Start a session with risk words when navigated from RiskWordsReminder
   useEffect(() => {
     const riskWordIds = (location.state as { riskWordIds?: string[] } | null)?.riskWordIds;
@@ -224,7 +248,7 @@ export default function Flashcards() {
     saveSession({
       wordIds: sessionWords.map((w) => w.id),
       currentIndex: 0,
-      filterType: 'all',
+      filterType: 'risk',
       dateRange: 30,
       savedAt: new Date().toISOString(),
       knownCount: 0,
@@ -317,6 +341,7 @@ export default function Flashcards() {
       all: words.length,
       new: words.filter(w => w.status === 'new').length,
       problem: problemWords.length,
+      risk: riskWords.length,
       allByProgress: {
         all: words.length,
         moderate: words.filter(w => {
@@ -362,7 +387,7 @@ export default function Flashcards() {
         };
       }),
     };
-  }, [words]);
+  }, [words, riskWords.length]);
 
   const currentWord = shuffledWords[currentIndex];
 
@@ -485,6 +510,7 @@ export default function Flashcards() {
     
     const filtered = filterWords(
       words,
+      riskWords,
       filterType,
       dateRange,
       progressFilter
@@ -563,6 +589,8 @@ export default function Flashcards() {
         return filterCounts.new;
       case 'problem':
         return filterCounts.problem;
+      case 'risk':
+        return filterCounts.risk;
       case 'date':
         return getDateRangeCount();
       default:
@@ -666,6 +694,7 @@ export default function Flashcards() {
       case 'all': return 'All Words';
       case 'new': return 'New Words';
       case 'problem': return 'Problem Words';
+      case 'risk': return 'Risk Words';
       case 'date': return 'By Date Added';
       default: return 'Unknown';
     }
@@ -1143,6 +1172,33 @@ export default function Flashcards() {
               )}
             </label>
 
+            {/* Risk Words Option */}
+            <label
+              className={`flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-colors ${
+                filterType === 'risk'
+                  ? 'bg-amber-600/20 border-amber-500'
+                  : 'bg-gray-700/50 border-gray-600 hover:bg-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="filterType"
+                  value="risk"
+                  checked={filterType === 'risk'}
+                  onChange={() => setFilterType('risk')}
+                  className="w-4 h-4 text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500"
+                />
+                <div>
+                  <span className="text-white font-medium">Risk Words</span>
+                  <p className="text-gray-400 text-sm">Known words at risk of being forgotten</p>
+                </div>
+              </div>
+              <span className="text-amber-300 bg-amber-500/20 px-3 py-1 rounded-full text-sm">
+                {filterCounts.risk}
+              </span>
+            </label>
+
             {/* By Date Option */}
             <label
               className={`flex flex-col p-4 rounded-lg border cursor-pointer transition-colors ${
@@ -1197,7 +1253,7 @@ export default function Flashcards() {
           <div className="mt-4 p-4 rounded-lg border border-gray-600 bg-gray-700/30">
             <label className="block text-white font-medium mb-2">Number of words</label>
             <p className="text-gray-400 text-sm mb-3">
-              Random words per session (applies to All, New, Problem, and By Date). Default 20.
+              Random words per session (applies to All, New, Problem, Risk, and By Date). Default 20.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               <input

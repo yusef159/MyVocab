@@ -3,7 +3,7 @@ const SESSION_SIZE_KEY = 'myvocab-flashcard-session-size';
 const LAST_COMPLETED_SESSION_KEY = 'myvocab-flashcard-last-completed-session';
 const DEFAULT_SESSION_SIZE = 20;
 
-export type SavedFlashcardSessionFilterType = 'all' | 'new' | 'problem' | 'date';
+export type SavedFlashcardSessionFilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
 
 export interface SavedFlashcardSession {
   wordIds: string[];

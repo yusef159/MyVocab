@@ -10,7 +10,8 @@ type TestType =
   | 'synonymMatch'
   | 'typeWhatYouHear'
   | 'meaningToWordMC'
-  | 'meaningTyping';
+  | 'meaningTyping'
+  | 'readingFluency';
 
 // Calculate learning progress percentage
 function calculateLearningPercentage(correctCount: number, wrongCount: number): number {
@@ -414,6 +415,31 @@ export default function TestTab() {
               </div>
               <h4 className={`text-lg font-bold ${selectedTestType === 'typeWhatYouHear' ? 'text-white' : 'text-gray-300'}`}>Type What You Hear</h4>
               <p className={`text-sm flex-1 ${selectedTestType === 'typeWhatYouHear' ? 'text-gray-200' : 'text-gray-400'}`}>Listen to the word and type it. Builds listening and spelling.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTestType('readingFluency')}
+              className={`rounded-xl p-4 text-left bg-gradient-to-br transition-all hover:scale-[1.02] active:scale-[0.98] flex flex-col gap-2 relative ${
+                selectedTestType === 'readingFluency'
+                  ? 'border-4 border-indigo-400 shadow-lg shadow-indigo-500/50 from-indigo-500/40 to-indigo-600/30 ring-4 ring-indigo-500/30'
+                  : 'border-2 border-indigo-500/40 hover:border-indigo-400/60 from-indigo-500/20 to-indigo-600/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">📖</span>
+                {selectedTestType === 'readingFluency' && (
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-400 text-indigo-900 font-bold text-lg shadow-lg">
+                    ✓
+                  </div>
+                )}
+              </div>
+              <h4 className={`text-lg font-bold ${selectedTestType === 'readingFluency' ? 'text-white' : 'text-gray-300'}`}>
+                Reading Fluency
+              </h4>
+              <p className={`text-sm flex-1 ${selectedTestType === 'readingFluency' ? 'text-gray-200' : 'text-gray-400'}`}>
+                Generate an article from these words, read it aloud, and get fluency feedback.
+              </p>
             </button>
           </div>
         </div>

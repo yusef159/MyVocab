@@ -93,6 +93,13 @@ interface VocabState {
   generateContextPrompt: (words: Word[]) => Promise<{ prompt: string; suggestedFocus?: string[]; context?: string }>;
 
   generateScenarios: (words: Word[], wordsPerScenario?: 1 | 2 | 3) => Promise<Array<{ scenarioId: string; description: string; wordIds: string[] }>>;
+  generateReadingArticleFromWords: (
+    words: Word[],
+    length: ReadingArticleLength
+  ) => Promise<{
+    article: ReadingArticle;
+    expectedWords: string[];
+  }>;
   generateReadingArticleFromKnownWords: (length: ReadingArticleLength) => Promise<{
     article: ReadingArticle;
     expectedWords: string[];
@@ -376,19 +383,14 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  generateReadingArticleFromKnownWords: async (length) => {
+  generateReadingArticleFromWords: async (words, length) => {
     try {
-      if (get().words.length === 0) {
-        await get().loadWords();
-      }
-
-      const knownWords = get().words.filter((w) => w.status === 'known');
-      if (knownWords.length === 0) {
-        throw new Error('No known words available. Mark words as known first.');
+      if (words.length === 0) {
+        throw new Error('No words available to build a reading article.');
       }
 
       // Avoid oversized payloads and overly long prompts for article generation.
-      const wordsForArticle = knownWords.slice(0, MAX_READING_ARTICLE_WORDS);
+      const wordsForArticle = words.slice(0, MAX_READING_ARTICLE_WORDS);
 
       const maxWordsByLength: Record<ReadingArticleLength, 80 | 140 | 200> = {
         short: 80,
@@ -410,14 +412,33 @@ export const useVocabStore = create<VocabState>((set, get) => ({
       const usedWordsFromIds = wordsForArticle
         .filter((w) => article.usedWordIds.includes(w.id))
         .map((w) => w.english);
-      const expectedWords = usedWordsFromIds.length > 0
-        ? usedWordsFromIds
-        : wordsForArticle.map((w) => w.english);
+      const expectedWords =
+        usedWordsFromIds.length > 0
+          ? usedWordsFromIds
+          : wordsForArticle.map((w) => w.english);
 
       return {
         article,
         expectedWords,
       };
+    } catch (error) {
+      console.error('Error generating reading article:', error);
+      throw new Error('Failed to generate reading article');
+    }
+  },
+
+  generateReadingArticleFromKnownWords: async (length) => {
+    try {
+      if (get().words.length === 0) {
+        await get().loadWords();
+      }
+
+      const knownWords = get().words.filter((w) => w.status === 'known');
+      if (knownWords.length === 0) {
+        throw new Error('No known words available. Mark words as known first.');
+      }
+
+      return await get().generateReadingArticleFromWords(knownWords, length);
     } catch (error) {
       console.error('Error generating reading article:', error);
       throw new Error('Failed to generate reading article');
