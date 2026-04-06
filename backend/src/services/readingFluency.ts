@@ -27,6 +27,17 @@ export interface MispronouncedWordItem {
   reason: string;
 }
 
+export type FluencyHighlightKind = 'filler' | 'long_pause' | 'very_long_pause';
+
+export interface FluencyHighlight {
+  kind: FluencyHighlightKind;
+  /** Position in the article: insert after this word index (-1 = before the first word). */
+  insertAfterWordIndex: number;
+  spoken?: string;
+  gapSeconds?: number;
+  detail: string;
+}
+
 export interface ReadingFluencyResponse {
   score: number;
   transcript: string;
@@ -42,6 +53,7 @@ export interface ReadingFluencyResponse {
     maxPauseSeconds?: number;
     missingExpectedWords: string[];
   };
+  highlights: FluencyHighlight[];
 }
 
 let openaiClient: OpenAI | null = null;
@@ -127,6 +139,210 @@ function computeMissingExpectedWords(expectedWords: string[], transcript: string
   return expectedWords.filter((word) => !transcriptWords.has(normalizeWord(word)));
 }
 
+const LONG_PAUSE_SEC = 0.8;
+const VERY_LONG_PAUSE_SEC = 1.5;
+
+function isFillerToken(word: string): boolean {
+  const n = normalizeWord(word);
+  return /^(um+|uh+|erm+|hmm+)$/.test(n);
+}
+
+function splitArticleWords(articleText: string): string[] {
+  const words: string[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(articleText)) !== null) {
+    words.push(m[0]);
+  }
+  return words;
+}
+
+function buildTranscriptWordList(
+  words: TranscribedWord[],
+  transcript: string
+): string[] {
+  if (words.length > 0) {
+    return words.map((w) => w.word);
+  }
+  return transcript
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function alignArticleToTranscript(
+  articleWords: string[],
+  transcriptWords: string[]
+): {
+  transcriptMatchArticle: (number | null)[];
+  fillers: { afterArticleIndex: number; spoken: string }[];
+} {
+  const n = articleWords.length;
+  const m = transcriptWords.length;
+  const INF = 1e9;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    Array(m + 1).fill(INF)
+  );
+
+  dp[0][0] = 0;
+  for (let j = 1; j <= m; j += 1) {
+    const skipTransCost = isFillerToken(transcriptWords[j - 1]) ? 0 : 1;
+    dp[0][j] = dp[0][j - 1] + skipTransCost;
+  }
+  for (let i = 1; i <= n; i += 1) {
+    dp[i][0] = dp[i - 1][0] + 1;
+  }
+
+  for (let i = 1; i <= n; i += 1) {
+    for (let j = 1; j <= m; j += 1) {
+      const a = articleWords[i - 1];
+      const t = transcriptWords[j - 1];
+      const matchCost =
+        normalizeWord(a) === normalizeWord(t) ? 0 : 2;
+      const optMatch = dp[i - 1][j - 1] + matchCost;
+      const optSkipArt = dp[i - 1][j] + 1;
+      const skipTransCost = isFillerToken(t) ? 0 : 1;
+      const optSkipTrans = dp[i][j - 1] + skipTransCost;
+
+      dp[i][j] = Math.min(optMatch, optSkipArt, optSkipTrans);
+    }
+  }
+
+  let i = n;
+  let j = m;
+  const transcriptMatchArticle: (number | null)[] = Array(m).fill(null);
+  const fillers: { afterArticleIndex: number; spoken: string }[] = [];
+
+  while (i > 0 || j > 0) {
+    let moved = false;
+
+    if (i > 0 && j > 0) {
+      const matchCost =
+        normalizeWord(articleWords[i - 1]) === normalizeWord(transcriptWords[j - 1])
+          ? 0
+          : 2;
+      if (dp[i][j] === dp[i - 1][j - 1] + matchCost) {
+        transcriptMatchArticle[j - 1] = i - 1;
+        i -= 1;
+        j -= 1;
+        moved = true;
+      }
+    }
+
+    if (!moved && i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
+      i -= 1;
+      moved = true;
+    }
+
+    if (!moved && j > 0) {
+      const skipTransCost = isFillerToken(transcriptWords[j - 1]) ? 0 : 1;
+      if (dp[i][j] === dp[i][j - 1] + skipTransCost) {
+        if (isFillerToken(transcriptWords[j - 1])) {
+          fillers.push({
+            afterArticleIndex: i - 1,
+            spoken: transcriptWords[j - 1],
+          });
+        }
+        j -= 1;
+        moved = true;
+      }
+    }
+
+    if (!moved) {
+      if (j > 0) {
+        j -= 1;
+      } else if (i > 0) {
+        i -= 1;
+      } else {
+        break;
+      }
+    }
+  }
+
+  fillers.reverse();
+  return { transcriptMatchArticle, fillers };
+}
+
+function lastMatchedArticleIndexBefore(
+  transcriptMatchArticle: (number | null)[],
+  transcriptIdx: number
+): number {
+  for (let k = transcriptIdx; k >= 0; k -= 1) {
+    const v = transcriptMatchArticle[k];
+    if (v !== null && v !== undefined) {
+      return v;
+    }
+  }
+  return -1;
+}
+
+function computeFluencyHighlights(
+  articleText: string,
+  words: TranscribedWord[],
+  transcript: string
+): FluencyHighlight[] {
+  const articleWords = splitArticleWords(articleText);
+  const transcriptWords = buildTranscriptWordList(words, transcript);
+  if (articleWords.length === 0 || transcriptWords.length === 0) {
+    return [];
+  }
+
+  const { transcriptMatchArticle, fillers } = alignArticleToTranscript(
+    articleWords,
+    transcriptWords
+  );
+
+  const highlights: FluencyHighlight[] = [];
+
+  for (const f of fillers) {
+    const spoken = f.spoken.trim();
+    highlights.push({
+      kind: 'filler',
+      insertAfterWordIndex: f.afterArticleIndex,
+      spoken,
+      detail: `Filler sound (“${spoken}”). These breaks can interrupt flow — try a short breath instead.`,
+    });
+  }
+
+  if (words.length >= 2) {
+    for (let j = 1; j < words.length; j += 1) {
+      const prevEnd = words[j - 1].end;
+      const curStart = words[j].start;
+      if (typeof prevEnd !== 'number' || typeof curStart !== 'number') {
+        continue;
+      }
+      const gap = curStart - prevEnd;
+      if (gap <= LONG_PAUSE_SEC) {
+        continue;
+      }
+      const kind: FluencyHighlightKind =
+        gap > VERY_LONG_PAUSE_SEC ? 'very_long_pause' : 'long_pause';
+      const anchor = lastMatchedArticleIndexBefore(transcriptMatchArticle, j - 1);
+      const gapRounded = Number(gap.toFixed(2));
+      highlights.push({
+        kind,
+        insertAfterWordIndex: anchor,
+        gapSeconds: gapRounded,
+        detail:
+          kind === 'very_long_pause'
+            ? `Very long pause (${gapRounded}s). Try linking this phrase with a steadier rhythm.`
+            : `Long pause (${gapRounded}s). Aim for shorter gaps between words while reading.`,
+      });
+    }
+  }
+
+  highlights.sort((a, b) => {
+    if (a.insertAfterWordIndex !== b.insertAfterWordIndex) {
+      return a.insertAfterWordIndex - b.insertAfterWordIndex;
+    }
+    const order = (k: FluencyHighlightKind) =>
+      k === 'filler' ? 0 : k === 'long_pause' ? 1 : 2;
+    return order(a.kind) - order(b.kind);
+  });
+
+  return highlights;
+}
+
 async function transcribeAudio(
   audioBuffer: Buffer,
   fileName: string,
@@ -181,6 +397,12 @@ export async function evaluateReadingFluency(
   const pause = computePauseMetrics(words);
   const missingExpectedWords = computeMissingExpectedWords(
     request.expectedWords,
+    transcript
+  );
+
+  const highlights = computeFluencyHighlights(
+    request.articleText,
+    words,
     transcript
   );
 
@@ -273,6 +495,7 @@ export async function evaluateReadingFluency(
       feedback,
       mispronouncedWords,
       metrics,
+      highlights,
     };
   } catch (error) {
     console.error('Failed to parse reading fluency response:', content);

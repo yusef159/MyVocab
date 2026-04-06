@@ -5,6 +5,7 @@ import type {
   ReadingArticleLength,
   ReadingFluencyEvaluation,
 } from '../types';
+import { ReadingFluencyArticleBody } from './ReadingFluencyArticleBody';
 
 const READING_FLUENCY_STATE_KEY = 'myvocab-reading-fluency-state';
 
@@ -368,8 +369,6 @@ export default function ReadingFluencyTab() {
             </span>
           </div>
 
-          <p className="text-gray-200">{evaluation.fluencySummary}</p>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4">
               <p className="text-gray-400 text-sm">Fillers</p>
@@ -400,40 +399,12 @@ export default function ReadingFluencyTab() {
             </div>
           </div>
 
-          <div>
-            <p className="text-white font-semibold mb-2">Actionable feedback</p>
-            <ul className="list-disc list-inside text-gray-200 space-y-1">
-              {evaluation.feedback.map((line, idx) => (
-                <li key={`${line}-${idx}`}>{line}</li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="text-white font-semibold mb-2">Words needing pronunciation work</p>
-            {evaluation.mispronouncedWords.length === 0 ? (
-              <p className="text-emerald-300">No major pronunciation issues detected.</p>
-            ) : (
-              <ul className="space-y-2">
-                {evaluation.mispronouncedWords.map((item, idx) => (
-                  <li
-                    key={`${item.word}-${idx}`}
-                    className="bg-rose-500/10 border border-rose-400/40 rounded-lg px-3 py-2"
-                  >
-                    <p className="text-rose-200 font-semibold">{item.word}</p>
-                    <p className="text-rose-100 text-sm">{item.reason}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <p className="text-white font-semibold mb-2">Detected transcript</p>
-            <p className="text-gray-300 bg-gray-900/50 border border-gray-700 rounded-lg p-3">
-              {evaluation.transcript}
-            </p>
-          </div>
+          {article && (
+            <ReadingFluencyArticleBody
+              articleText={article.article}
+              highlights={evaluation.highlights}
+            />
+          )}
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import type { ReadingArticle, ReadingArticleLength, ReadingFluencyEvaluation, Word } from '../types';
+import { ReadingFluencyArticleBody } from './ReadingFluencyArticleBody';
 
 // Web Speech API types (not in all TS lib.dom versions)
 interface SpeechRecognitionResultList {
@@ -1580,7 +1581,6 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 {readingEvaluation.score}/100
               </span>
             </div>
-            <p className="text-gray-200">{readingEvaluation.fluencySummary}</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4">
                 <p className="text-gray-400 text-sm">Fillers</p>
@@ -1610,38 +1610,12 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 </p>
               </div>
             </div>
-            <div>
-              <p className="text-white font-semibold mb-2">Actionable feedback</p>
-              <ul className="list-disc list-inside text-gray-200 space-y-1">
-                {readingEvaluation.feedback.map((line, idx) => (
-                  <li key={`${line}-${idx}`}>{line}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-white font-semibold mb-2">Words needing pronunciation work</p>
-              {readingEvaluation.mispronouncedWords.length === 0 ? (
-                <p className="text-emerald-300">No major pronunciation issues detected.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {readingEvaluation.mispronouncedWords.map((item, idx) => (
-                    <li
-                      key={`${item.word}-${idx}`}
-                      className="bg-rose-500/10 border border-rose-400/40 rounded-lg px-3 py-2"
-                    >
-                      <p className="text-rose-200 font-semibold">{item.word}</p>
-                      <p className="text-rose-100 text-sm">{item.reason}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <p className="text-white font-semibold mb-2">Detected transcript</p>
-              <p className="text-gray-300 bg-gray-900/50 border border-gray-700 rounded-lg p-3">
-                {readingEvaluation.transcript}
-              </p>
-            </div>
+            {readingArticle && (
+              <ReadingFluencyArticleBody
+                articleText={readingArticle.article}
+                highlights={readingEvaluation.highlights}
+              />
+            )}
           </div>
         )}
       </div>

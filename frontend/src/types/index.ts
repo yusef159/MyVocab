@@ -87,6 +87,16 @@ export interface ReadingMispronouncedWord {
   reason: string;
 }
 
+export type FluencyHighlightKind = 'filler' | 'long_pause' | 'very_long_pause';
+
+export interface FluencyHighlight {
+  kind: FluencyHighlightKind;
+  insertAfterWordIndex: number;
+  spoken?: string;
+  gapSeconds?: number;
+  detail: string;
+}
+
 export interface ReadingFluencyEvaluation {
   score: number;
   transcript: string;
@@ -94,6 +104,7 @@ export interface ReadingFluencyEvaluation {
   feedback: string[];
   mispronouncedWords: ReadingMispronouncedWord[];
   metrics: ReadingFluencyMetrics;
+  highlights?: FluencyHighlight[];
 }
 
 // -----------------------------
