@@ -126,13 +126,14 @@ export async function getWordsByStatus(status: Word['status']): Promise<Word[]> 
 
 /** Min days since last review to consider a known word "at risk" of being forgotten */
 const RISK_DAYS_THRESHOLD = 14;
-/** Max number of at-risk words to return (for UI and session cap) */
-const RISK_WORDS_TOP_N = 20;
 
 /**
- * Returns known words that are at risk of being forgotten: status is "known" but
- * success rate is below 100% (they have at least one wrong in their history).
- * Uses correctCount, wrongCount, total reviews, and lastReviewedAt for scoring.
+ * Returns known words at high risk of being forgotten.
+ *
+ * Priority order:
+ * 1) reviewed a longer time ago (highest priority)
+ * 2) lower learning performance (lower accuracy)
+ * 3) weaker review history (more wrong, fewer correct)
  */
 export async function getRiskWords(): Promise<RiskWord[]> {
   const words = await getAllWords();
@@ -141,29 +142,43 @@ export async function getRiskWords(): Promise<RiskWord[]> {
 
   const withRisk: RiskWord[] = words
     .filter((w) => w.status === 'known')
-    .filter((w) => {
-      const total = (w.correctCount || 0) + (w.wrongCount || 0);
-      if (total === 0) return false;
-      const rate = (w.correctCount || 0) / total;
-      return rate < 1;
-    })
     .map((w) => {
+      const correct = w.correctCount || 0;
+      const wrong = w.wrongCount || 0;
+      const totalReviews = correct + wrong;
+      const learningRate = totalReviews > 0 ? correct / totalReviews : 0;
       const lastReviewedAt = w.lastReviewedAt ? new Date(w.lastReviewedAt).getTime() : null;
       const daysSinceReview =
         lastReviewedAt != null
           ? Math.floor((now - lastReviewedAt) / oneDayMs)
           : 365;
-      return { ...w, daysSinceReview };
+      return {
+        ...w,
+        daysSinceReview,
+        learningRate,
+        totalReviews,
+      };
     })
+    .filter((w) => w.totalReviews > 0)
+    .filter((w) => w.learningRate < 1)
     .filter((w) => w.daysSinceReview >= RISK_DAYS_THRESHOLD)
-    .map((w) => {
-      const riskScore =
-        w.daysSinceReview - (w.correctCount || 0) * 2 + (w.wrongCount || 0);
-      return { ...w, riskScore };
+    .sort((a, b) => {
+      // 1) More stale first
+      if (b.daysSinceReview !== a.daysSinceReview) {
+        return b.daysSinceReview - a.daysSinceReview;
+      }
+      // 2) Lower learning rate first
+      if (a.learningRate !== b.learningRate) {
+        return a.learningRate - b.learningRate;
+      }
+      // 3) More wrong answers first
+      if ((b.wrongCount || 0) !== (a.wrongCount || 0)) {
+        return (b.wrongCount || 0) - (a.wrongCount || 0);
+      }
+      // 4) Fewer correct answers first
+      return (a.correctCount || 0) - (b.correctCount || 0);
     })
-    .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0))
-    .slice(0, RISK_WORDS_TOP_N)
-    .map(({ riskScore: _, ...rest }) => rest);
+    .map(({ learningRate: _, totalReviews: __, ...rest }) => rest);
 
   return withRisk;
 }
