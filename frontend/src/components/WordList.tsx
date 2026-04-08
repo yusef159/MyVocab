@@ -768,6 +768,7 @@ export default function WordList() {
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
+  const [showLearningFilter, setShowLearningFilter] = useState(false);
   const [learningMin, setLearningMin] = useState(0);
   const [learningMax, setLearningMax] = useState(100);
   const [wordToDelete, setWordToDelete] = useState<Word | null>(null);
@@ -985,87 +986,117 @@ export default function WordList() {
         </div>
       </div>
 
-      {/* Learning progress range (0–100%) — compact min/max */}
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-400">
-            <span className="w-8 text-gray-500">Min</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={learningMin}
-              onChange={(e) => {
-                const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
-                setLearningMin(v);
-                if (v > learningMax) setLearningMax(v);
-              }}
-              className="w-16 rounded-md border border-gray-600 bg-gray-800 px-2 py-2 text-center text-sm tabular-nums text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
-              aria-label="Minimum learning progress percent"
-            />
-            <span className="text-gray-500">%</span>
-          </label>
-          <span className="hidden text-gray-600 sm:inline" aria-hidden>
-            —
-          </span>
-          <label className="flex items-center gap-2 text-sm text-gray-400">
-            <span className="w-8 text-gray-500">Max</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={learningMax}
-              onChange={(e) => {
-                const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
-                setLearningMax(v);
-                if (v < learningMin) setLearningMin(v);
-              }}
-              className="w-16 rounded-md border border-gray-600 bg-gray-800 px-2 py-2 text-center text-sm tabular-nums text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
-              aria-label="Maximum learning progress percent"
-            />
-            <span className="text-gray-500">%</span>
-          </label>
-          {(learningMin > 0 || learningMax < 100) && (
-            <button
-              type="button"
-              onClick={() => {
-                setLearningMin(0);
-                setLearningMax(100);
-              }}
-              className="text-sm text-gray-400 transition hover:text-emerald-400"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-          {[
-            { label: '0', min: 0, max: 0 },
-            { label: '0-25', min: 0, max: 25 },
-            { label: '25-50', min: 25, max: 50 },
-            { label: '50-75', min: 50, max: 75 },
-            { label: '75-100', min: 75, max: 100 },
-            { label: '100', min: 100, max: 100 },
-          ].map((shortcut) => {
-            const isActive = learningMin === shortcut.min && learningMax === shortcut.max;
-            return (
-              <button
-                key={shortcut.label}
-                type="button"
-                onClick={() => {
-                  setLearningMin(shortcut.min);
-                  setLearningMax(shortcut.max);
-                }}
-                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${
-                  isActive
-                    ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
-                    : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:text-white'
-                }`}
-              >
-                {shortcut.label}
-              </button>
-            );
-          })}
+      {/* Learning progress filter (collapsed by default) */}
+      <div className="rounded-lg border border-gray-700 bg-gray-800/50">
+        <button
+          type="button"
+          onClick={() => setShowLearningFilter((prev) => !prev)}
+          aria-expanded={showLearningFilter}
+          aria-controls="learning-progress-filter-panel"
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-700/40"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-200">Learning progress filter</span>
+          </div>
+          <svg
+            className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${showLearningFilter ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div
+          id="learning-progress-filter-panel"
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            showLearningFilter ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className="flex flex-col gap-3 border-t border-gray-700 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-400">
+                <span className="w-8 text-gray-500">Min</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={learningMin}
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
+                    setLearningMin(v);
+                    if (v > learningMax) setLearningMax(v);
+                  }}
+                  className="w-16 rounded-md border border-gray-600 bg-gray-800 px-2 py-2 text-center text-sm tabular-nums text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                  aria-label="Minimum learning progress percent"
+                />
+                <span className="text-gray-500">%</span>
+              </label>
+              <span className="hidden text-gray-600 sm:inline" aria-hidden>
+                -
+              </span>
+              <label className="flex items-center gap-2 text-sm text-gray-400">
+                <span className="w-8 text-gray-500">Max</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={learningMax}
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
+                    setLearningMax(v);
+                    if (v < learningMin) setLearningMin(v);
+                  }}
+                  className="w-16 rounded-md border border-gray-600 bg-gray-800 px-2 py-2 text-center text-sm tabular-nums text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                  aria-label="Maximum learning progress percent"
+                />
+                <span className="text-gray-500">%</span>
+              </label>
+              {(learningMin > 0 || learningMax < 100) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLearningMin(0);
+                    setLearningMax(100);
+                  }}
+                  className="text-sm text-gray-400 transition hover:text-emerald-400"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              {[
+                { label: '0', min: 0, max: 0 },
+                { label: '0-25', min: 0, max: 25 },
+                { label: '25-50', min: 25, max: 50 },
+                { label: '50-75', min: 50, max: 75 },
+                { label: '75-100', min: 75, max: 100 },
+                { label: '100', min: 100, max: 100 },
+              ].map((shortcut) => {
+                const isActive = learningMin === shortcut.min && learningMax === shortcut.max;
+                return (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    onClick={() => {
+                      setLearningMin(shortcut.min);
+                      setLearningMax(shortcut.max);
+                    }}
+                    className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${
+                      isActive
+                        ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
+                        : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:text-white'
+                    }`}
+                  >
+                    {shortcut.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

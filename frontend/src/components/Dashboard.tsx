@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { getRiskWords } from '../db';
 import { useVocabStore } from '../stores/vocabStore';
 import { useGrammarStore } from '../stores/grammarStore';
 import { useNavigate } from 'react-router-dom';
@@ -137,12 +138,16 @@ export default function Dashboard() {
   } = useVocabStore();
   const navigate = useNavigate();
   const { levels, levelSummaries, progressBySkillId } = useGrammarStore();
+  const [riskCount, setRiskCount] = useState(0);
 
   const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastWeek');
 
   useEffect(() => {
     loadStats();
     loadStreak();
+    getRiskWords()
+      .then((items) => setRiskCount(items.length))
+      .catch(() => setRiskCount(0));
   }, [loadStats, loadStreak]);
 
   const grammarOverview = (() => {
@@ -213,7 +218,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
           <p className="text-gray-400 text-sm uppercase tracking-wide">Total Words</p>
           <p className="text-4xl font-bold text-white mt-2">{stats.total}</p>
@@ -233,7 +238,13 @@ export default function Dashboard() {
           <p className="text-blue-400 text-sm uppercase tracking-wide">New</p>
           <p className="text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
         </div>
-        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30 col-span-2 md:col-span-4">
+
+        <div className="bg-gray-800 rounded-xl p-6 border border-amber-500/30">
+          <p className="text-amber-400 text-sm uppercase tracking-wide">In Risk</p>
+          <p className="text-4xl font-bold text-amber-400 mt-2">{riskCount}</p>
+        </div>
+
+        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30 col-span-2 md:col-span-5">
           <p className="text-purple-400 text-sm uppercase tracking-wide">
             Grammar Skills
           </p>
