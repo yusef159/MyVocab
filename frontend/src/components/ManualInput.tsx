@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
+import { wordExists } from '../db';
 
 type InputMode = 'manual' | 'ai';
 
@@ -23,10 +24,33 @@ export default function ManualInput() {
     clearSuggestions,
   } = useVocabStore();
 
-  const handleGetSuggestions = () => {
-    if (word.trim()) {
-      suggestMeanings(word.trim());
+  const setDuplicateError = (english: string) => {
+    useVocabStore.setState({
+      error: `Word "${english}" already exists in your vocabulary`,
+    });
+  };
+
+  const clearError = () => {
+    useVocabStore.setState({ error: null });
+  };
+
+  const handleEnglishWordBlur = async () => {
+    if (inputMode !== 'manual') return;
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    if (await wordExists(trimmed)) {
+      setDuplicateError(trimmed);
     }
+  };
+
+  const handleGetSuggestions = async () => {
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    if (await wordExists(trimmed)) {
+      setDuplicateError(trimmed);
+      return;
+    }
+    suggestMeanings(trimmed);
   };
 
   // Clear success message after 3 seconds
@@ -80,6 +104,15 @@ export default function ManualInput() {
     <div className="space-y-6">
       <h2 className="text-3xl font-bold text-white">Manual Word Input</h2>
 
+      {error && (
+        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </div>
+      )}
+
       {suggestions.length === 0 ? (
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
           {/* Word Input */}
@@ -90,7 +123,11 @@ export default function ManualInput() {
             <input
               type="text"
               value={word}
-              onChange={(e) => setWord(e.target.value)}
+              onChange={(e) => {
+                setWord(e.target.value);
+                clearError();
+              }}
+              onBlur={handleEnglishWordBlur}
               placeholder="Enter an English word..."
               className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
               onKeyDown={(e) => {
@@ -185,16 +222,6 @@ export default function ManualInput() {
             </div>
           )}
 
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
-              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {error}
-            </div>
-          )}
-
           {/* Action Button */}
           {inputMode === 'manual' ? (
             <button
@@ -257,14 +284,6 @@ export default function ManualInput() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               {successMessage}
-            </div>
-          )}
-          {error && (
-            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
-              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {error}
             </div>
           )}
           <div className="mb-4 flex items-center justify-between text-gray-400">

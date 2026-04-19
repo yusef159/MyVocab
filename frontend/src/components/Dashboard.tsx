@@ -140,7 +140,7 @@ export default function Dashboard() {
   const { levels, levelSummaries, progressBySkillId } = useGrammarStore();
   const [riskCount, setRiskCount] = useState(0);
 
-  const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastWeek');
+  const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastMonth');
 
   useEffect(() => {
     loadStats();
