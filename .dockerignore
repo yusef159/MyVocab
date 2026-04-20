@@ -1,0 +1,11 @@
+**/node_modules
+**/.git
+**/.env
+**/.env.*
+**/dist
+**/*.md
+**/.DS_Store
+**/npm-debug.log*
+.cursor
+**/.vscode
+data

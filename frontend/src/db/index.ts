@@ -1,4 +1,5 @@
-import Dexie, { type EntityTable } from 'dexie';
+import axios from 'axios';
+import Dexie from 'dexie';
 import type { Word, RiskWord, StreakData, WordReviewEvent, GrammarProgress } from '../types';
 
 export interface DailyReviewCount {
@@ -6,328 +7,71 @@ export interface DailyReviewCount {
   count: number;
 }
 
-const db = new Dexie('MyVocabDB') as Dexie & {
-  words: EntityTable<Word, 'id'>;
-  streakData: EntityTable<StreakData, 'id'>;
-  dailyReviewCounts: EntityTable<DailyReviewCount, 'date'>;
-  wordReviewEvents: EntityTable<WordReviewEvent, 'id'>;
-  grammarProgress: EntityTable<GrammarProgress, 'skillId'>;
-};
+const API_URL = '';
 
-db.version(1).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-});
-
-// Migration: Add streak property to existing words
-db.version(2).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-}).upgrade(async (tx) => {
-  const words = await tx.table('words').toArray();
-  await Promise.all(words.map(word => {
-    if (!('streak' in word) || typeof word.streak !== 'number') {
-      return tx.table('words').update(word.id, { streak: 0 });
-    }
-  }));
-});
-
-// Migration: exampleSentence -> exampleSentences (array, up to 3)
-db.version(3).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-}).upgrade(async (tx) => {
-  const words = await tx.table('words').toArray();
-  await Promise.all(words.map((word: Record<string, unknown>) => {
-    const hasNew = Array.isArray(word.exampleSentences) && word.exampleSentences.length > 0;
-    if (hasNew) return;
-    const legacy = typeof word.exampleSentence === 'string' && word.exampleSentence.trim();
-    const exampleSentences = legacy ? [word.exampleSentence as string] : [''];
-    return tx.table('words').update(word.id as string, { exampleSentences });
-  }));
-});
-
-// Migration: add dailyReviewCounts for review activity graph
-db.version(4).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-  dailyReviewCounts: 'date',
-}).upgrade(async (tx) => {
-  const streak = await tx.table('streakData').get('main-streak') as { reviewsToday?: number; reviewsDate?: string } | undefined;
-  if (streak?.reviewsToday && streak.reviewsDate) {
-    await tx.table('dailyReviewCounts').put({ date: streak.reviewsDate, count: streak.reviewsToday });
-  }
-});
-
-// Migration: add wordReviewEvents table for per-word performance history
-db.version(5).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-  dailyReviewCounts: 'date',
-  wordReviewEvents: 'id, wordId, createdAt',
-});
-
-// Migration: add grammarProgress table for grammar skill tracking
-db.version(6).stores({
-  words: 'id, english, status, createdAt',
-  streakData: 'id',
-  dailyReviewCounts: 'date',
-  wordReviewEvents: 'id, wordId, createdAt',
-  grammarProgress: 'skillId, levelId',
-});
-
-/** Normalize raw word from DB to Word (handle legacy exampleSentence) */
-function normalizeWord(raw: Record<string, unknown>): Word {
-  const exampleSentences = Array.isArray(raw.exampleSentences) && raw.exampleSentences.length > 0
-    ? (raw.exampleSentences as string[]).filter(Boolean).slice(0, 3)
-    : typeof raw.exampleSentence === 'string' && raw.exampleSentence.trim()
-      ? [raw.exampleSentence]
-      : [''];
-  return { ...raw, exampleSentences } as Word;
-}
-
-// Word operations
 export async function wordExists(english: string): Promise<boolean> {
-  const existing = await db.words.where('english').equalsIgnoreCase(english).first();
-  return !!existing;
+  const res = await axios.get<{ exists: boolean }>(`${API_URL}/api/data/words/exists`, {
+    params: { english },
+  });
+  return res.data.exists;
 }
 
 export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount' | 'correctCount' | 'status' | 'streak'>): Promise<{ id: string | null; isDuplicate: boolean }> {
-  // Check if word already exists (case-insensitive)
-  const exists = await wordExists(word.english);
-  if (exists) {
-    return { id: null, isDuplicate: true };
-  }
-
-  const sentences = (word.exampleSentences ?? []).filter(Boolean).slice(0, 3);
-  const id = crypto.randomUUID();
-  await db.words.add({
-    ...word,
-    exampleSentences: sentences.length ? sentences : [''],
-    id,
-    status: 'new',
-    wrongCount: 0,
-    correctCount: 0,
-    streak: 0,
-    createdAt: new Date(),
+  const res = await axios.post<{ id: string | null; isDuplicate: boolean }>(`${API_URL}/api/data/words`, {
+    english: word.english,
+    arabicMeanings: word.arabicMeanings,
+    exampleSentences: word.exampleSentences,
+    topic: word.topic,
   });
-  return { id, isDuplicate: false };
+  return res.data;
 }
 
 export async function getAllWords(): Promise<Word[]> {
-  const rows = await db.words.toArray();
-  return rows.map((r) => normalizeWord(r as unknown as Record<string, unknown>));
+  const res = await axios.get<{ words: Word[] }>(`${API_URL}/api/data/words`);
+  return res.data.words;
 }
 
 export async function getWordsByStatus(status: Word['status']): Promise<Word[]> {
-  const rows = await db.words.where('status').equals(status).toArray();
-  return rows.map((r) => normalizeWord(r as unknown as Record<string, unknown>));
+  const res = await axios.get<{ words: Word[] }>(`${API_URL}/api/data/words/status/${status}`);
+  return res.data.words;
 }
 
 /** Min days since last review to consider a known word "at risk" of being forgotten */
-const RISK_DAYS_THRESHOLD = 14;
-
-/**
- * Returns known words at high risk of being forgotten.
- *
- * Priority order:
- * 1) reviewed a longer time ago (highest priority)
- * 2) lower learning performance (lower accuracy)
- * 3) weaker review history (more wrong, fewer correct)
- */
 export async function getRiskWords(): Promise<RiskWord[]> {
-  const words = await getAllWords();
-  const now = Date.now();
-  const oneDayMs = 24 * 60 * 60 * 1000;
-
-  const withRisk: RiskWord[] = words
-    .filter((w) => w.status === 'known')
-    .map((w) => {
-      const correct = w.correctCount || 0;
-      const wrong = w.wrongCount || 0;
-      const totalReviews = correct + wrong;
-      const learningRate = totalReviews > 0 ? correct / totalReviews : 0;
-      const lastReviewedAt = w.lastReviewedAt ? new Date(w.lastReviewedAt).getTime() : null;
-      const daysSinceReview =
-        lastReviewedAt != null
-          ? Math.floor((now - lastReviewedAt) / oneDayMs)
-          : 365;
-      return {
-        ...w,
-        daysSinceReview,
-        learningRate,
-        totalReviews,
-      };
-    })
-    .filter((w) => w.totalReviews > 0)
-    .filter((w) => w.learningRate < 1)
-    .filter((w) => w.daysSinceReview >= RISK_DAYS_THRESHOLD)
-    .sort((a, b) => {
-      // 1) More stale first
-      if (b.daysSinceReview !== a.daysSinceReview) {
-        return b.daysSinceReview - a.daysSinceReview;
-      }
-      // 2) Lower learning rate first
-      if (a.learningRate !== b.learningRate) {
-        return a.learningRate - b.learningRate;
-      }
-      // 3) More wrong answers first
-      if ((b.wrongCount || 0) !== (a.wrongCount || 0)) {
-        return (b.wrongCount || 0) - (a.wrongCount || 0);
-      }
-      // 4) Fewer correct answers first
-      return (a.correctCount || 0) - (b.correctCount || 0);
-    })
-    .map(({ learningRate: _, totalReviews: __, ...rest }) => rest);
-
-  return withRisk;
-}
-
-export async function updateWordStatus(id: string, status: Word['status']): Promise<void> {
-  await db.words.update(id, { status, lastReviewedAt: new Date() });
+  const res = await axios.get<{ words: RiskWord[] }>(`${API_URL}/api/data/words/risk`);
+  return res.data.words;
 }
 
 export async function incrementWrongCount(id: string): Promise<void> {
-  const word = await db.words.get(id);
-  if (word) {
-    const newWrong = word.wrongCount + 1;
-    const newCorrect = word.correctCount;
-    
-    let newStatus: Word['status'];
-    let newStreak: number;
-    
-    if (word.status === 'new') {
-      // New word: if wrong → status becomes "problem"
-      newStatus = 'problem';
-      newStreak = 0;
-    } else if (word.status === 'problem') {
-      // Problem word: reset streak to 0, keep status as "problem"
-      newStatus = 'problem';
-      newStreak = 0;
-    } else {
-      // Known word: if wrong again, change back to problem and reset streak
-      newStatus = 'problem';
-      newStreak = 0;
-    }
-    
-    await db.words.update(id, {
-      wrongCount: newWrong,
-      correctCount: newCorrect,
-      status: newStatus,
-      streak: newStreak,
-      lastReviewedAt: new Date(),
-    });
-    await logWordReviewEvent(id, 'problem');
-  }
+  await axios.post(`${API_URL}/api/data/words/${id}/review`, { result: 'problem' });
 }
 
 export async function incrementCorrectCount(id: string): Promise<void> {
-  const word = await db.words.get(id);
-  if (word) {
-    const newCorrect = word.correctCount + 1;
-    const newWrong = word.wrongCount;
-    
-    let newStatus: Word['status'];
-    let newStreak: number;
-    
-    if (word.status === 'new') {
-      // New word: if correct → status becomes "known"
-      newStatus = 'known';
-      newStreak = 0; // Known words don't need streak
-    } else if (word.status === 'problem') {
-      // Problem word: increment streak
-      const currentStreak = word.streak || 0;
-      newStreak = currentStreak + 1;
-      
-      // If streak reaches 3, change status to "known"
-      if (newStreak >= 3) {
-        newStatus = 'known';
-        newStreak = 0; // Reset streak when becoming known
-      } else {
-        newStatus = 'problem';
-      }
-    } else {
-      // Known word: keep as known, no streak needed
-      newStatus = 'known';
-      newStreak = 0;
-    }
-    
-    await db.words.update(id, {
-      correctCount: newCorrect,
-      wrongCount: newWrong,
-      status: newStatus,
-      streak: newStreak,
-      lastReviewedAt: new Date(),
-    });
-    await logWordReviewEvent(id, 'known');
-  }
+  await axios.post(`${API_URL}/api/data/words/${id}/review`, { result: 'known' });
 }
 
 /**
  * Manually update a word's review counts.
  * Used from the UI when the user edits the Known / Didn't Know counters.
- * Also adjusts the status heuristically to keep stats consistent.
  */
-export async function updateWordReviewCounts(
-  id: string,
-  correctCount: number,
-  wrongCount: number
-): Promise<void> {
-  const word = await db.words.get(id);
-  if (!word) return;
-
-  const safeCorrect = Math.max(0, Math.floor(Number.isFinite(correctCount) ? correctCount : 0));
-  const safeWrong = Math.max(0, Math.floor(Number.isFinite(wrongCount) ? wrongCount : 0));
-
-  let newStatus: Word['status'];
-  if (safeCorrect === 0 && safeWrong === 0) {
-    newStatus = 'new';
-  } else if (safeCorrect >= safeWrong) {
-    newStatus = 'known';
-  } else {
-    newStatus = 'problem';
-  }
-
-  await db.words.update(id, {
-    correctCount: safeCorrect,
-    wrongCount: safeWrong,
-    status: newStatus,
-    streak: 0, // Reset streak when manually editing counts
-  });
-}
-
-export async function logWordReviewEvent(
-  wordId: string,
-  result: 'known' | 'problem'
-): Promise<void> {
-  const event: WordReviewEvent = {
-    id: crypto.randomUUID(),
-    wordId,
-    result,
-    delta: result === 'known' ? 1 : -1,
-    createdAt: new Date(),
-  };
-  await db.wordReviewEvents.add(event);
+export async function updateWordReviewCounts(id: string, correctCount: number, wrongCount: number): Promise<void> {
+  await axios.patch(`${API_URL}/api/data/words/${id}/review-counts`, { correctCount, wrongCount });
 }
 
 export async function getWordReviewHistory(wordId: string): Promise<WordReviewEvent[]> {
-  return await db.wordReviewEvents.where('wordId').equals(wordId).sortBy('createdAt');
+  const res = await axios.get<{ events: WordReviewEvent[] }>(`${API_URL}/api/data/words/${wordId}/reviews`);
+  return res.data.events;
 }
 
 export async function updateWordContent(
   id: string,
   updates: { arabicMeanings?: string[]; exampleSentences?: string[] }
 ): Promise<void> {
-  const payload: { arabicMeanings?: string[]; exampleSentences?: string[] } = { ...updates };
-  if (Array.isArray(payload.exampleSentences)) {
-    payload.exampleSentences = payload.exampleSentences.filter((s) => s && String(s).trim()).slice(0, 3);
-    if (payload.exampleSentences.length === 0) payload.exampleSentences = [''];
-  }
-  await db.words.update(id, payload);
+  await axios.patch(`${API_URL}/api/data/words/${id}/content`, updates);
 }
 
 export async function deleteWord(id: string): Promise<void> {
-  await db.words.delete(id);
+  await axios.delete(`${API_URL}/api/data/words/${id}`);
 }
 
 export async function bulkAddWords(words: Array<{
@@ -335,57 +79,11 @@ export async function bulkAddWords(words: Array<{
   arabicMeanings: string[];
   exampleSentences: string[];
 }>): Promise<{ added: number; skipped: number; skippedWords: string[] }> {
-  // Get all existing words for duplicate checking
-  const existingWords = await db.words.toArray();
-  const existingSet = new Set(existingWords.map((w: { english: string }) => w.english.toLowerCase()));
-
-  // Also check for duplicates within the import itself
-  const seenInImport = new Set<string>();
-  const skippedWords: string[] = [];
-
-  const normalizeSentences = (ss: string[]) => {
-    const out = (ss ?? []).filter(Boolean).map(s => String(s).trim()).slice(0, 3);
-    return out.length ? out : [''];
-  };
-
-  const wordsToAdd = words.filter(word => {
-    const lowerWord = word.english.toLowerCase();
-    
-    // Check if already exists in database
-    if (existingSet.has(lowerWord)) {
-      skippedWords.push(word.english);
-      return false;
-    }
-    
-    // Check if duplicate within the import
-    if (seenInImport.has(lowerWord)) {
-      skippedWords.push(word.english);
-      return false;
-    }
-    
-    seenInImport.add(lowerWord);
-    return true;
-  }).map(word => ({
-    english: word.english,
-    arabicMeanings: word.arabicMeanings,
-    exampleSentences: normalizeSentences(word.exampleSentences),
-    id: crypto.randomUUID(),
-    status: 'new' as const,
-    wrongCount: 0,
-    correctCount: 0,
-    streak: 0,
-    createdAt: new Date(),
-  }));
-
-  if (wordsToAdd.length > 0) {
-    await db.words.bulkAdd(wordsToAdd);
-  }
-  
-  return { 
-    added: wordsToAdd.length, 
-    skipped: skippedWords.length,
-    skippedWords 
-  };
+  const res = await axios.post<{ added: number; skipped: number; skippedWords: string[] }>(
+    `${API_URL}/api/data/words/import`,
+    words
+  );
+  return res.data;
 }
 
 export async function getWordStats(): Promise<{
@@ -394,171 +92,192 @@ export async function getWordStats(): Promise<{
   problem: number;
   new: number;
 }> {
-  const [total, known, problem, newCount] = await Promise.all([
-    db.words.count(),
-    db.words.where('status').equals('known').count(),
-    db.words.where('status').equals('problem').count(),
-    db.words.where('status').equals('new').count(),
-  ]);
-  return { total, known, problem, new: newCount };
+  const res = await axios.get<{ total: number; known: number; problem: number; new: number }>(`${API_URL}/api/data/words/stats`);
+  return res.data;
 }
 
 // Streak operations
-const STREAK_ID = 'main-streak';
-
 export async function getStreakData(): Promise<StreakData> {
-  let streak = await db.streakData.get(STREAK_ID);
-  if (!streak) {
-    streak = {
-      id: STREAK_ID,
-      currentStreak: 0,
-      longestStreak: 0,
-      lastActivityDate: '',
-      reviewsToday: 0,
-      reviewsDate: '',
-    };
-    await db.streakData.add(streak);
-  }
-  // Migration: add reviewsToday and reviewsDate if they don't exist
-  let needsUpdate = false;
-  if (typeof streak.reviewsToday !== 'number') {
-    streak.reviewsToday = 0;
-    needsUpdate = true;
-  }
-  if (!streak.reviewsDate) {
-    streak.reviewsDate = '';
-    needsUpdate = true;
-  }
-  if (needsUpdate) {
-    await db.streakData.put(streak);
-  }
-  return streak;
+  const res = await axios.get<StreakData>(`${API_URL}/api/data/streak`);
+  return res.data;
 }
 
 export async function updateStreak(): Promise<StreakData> {
-  const today = new Date().toISOString().split('T')[0];
-  const streak = await getStreakData();
-
-  let reviewsToday = streak.reviewsToday || 0;
-  let reviewsDate = streak.reviewsDate || '';
-  
-  // If it's a new day, reset reviewsToday
-  if (reviewsDate !== today) {
-    reviewsToday = 0;
-    reviewsDate = today;
-  }
-
-  // Increment reviews today
-  reviewsToday += 1;
-
-  await incrementDailyReviewCount(today);
-
-  // If reviews reach 20 today, increment the streak
-  if (reviewsToday === 20) {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    let newCurrentStreak: number;
-    // lastActivityDate tracks the last day the streak was incremented (i.e., last day with 20+ reviews)
-    if (streak.lastActivityDate === yesterdayStr) {
-      // Consecutive day - increment streak
-      newCurrentStreak = streak.currentStreak + 1;
-    } else {
-      // Streak broken or first day - start/reset to 1
-      newCurrentStreak = 1;
-    }
-    
-    const newLongestStreak = Math.max(streak.longestStreak, newCurrentStreak);
-    
-    const updatedStreak = {
-      ...streak,
-      currentStreak: newCurrentStreak,
-      longestStreak: newLongestStreak,
-      lastActivityDate: today, // Update to today since we completed 20 reviews
-      reviewsToday,
-      reviewsDate,
-    };
-    
-    await db.streakData.put(updatedStreak);
-    return updatedStreak;
-  }
-
-  // Update reviewsToday but don't increment streak yet
-  const updatedStreak = {
-    ...streak,
-    reviewsToday,
-    reviewsDate,
-  };
-
-  await db.streakData.put(updatedStreak);
-  return updatedStreak;
-}
-
-// Daily review counts for activity graph
-export async function incrementDailyReviewCount(date: string): Promise<void> {
-  const row = await db.dailyReviewCounts.get(date);
-  if (row) {
-    await db.dailyReviewCounts.update(date, { count: row.count + 1 });
-  } else {
-    await db.dailyReviewCounts.add({ date, count: 1 });
-  }
-}
-
-function getDatesInRange(start: string, end: string): string[] {
-  const out: string[] = [];
-  const d = new Date(start + 'T12:00:00');
-  const endD = new Date(end + 'T12:00:00');
-  while (d <= endD) {
-    out.push(d.toISOString().split('T')[0]);
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
+  const res = await axios.post<StreakData>(`${API_URL}/api/data/streak/increment`);
+  return res.data;
 }
 
 export async function getReviewCountsByDateRange(
   startDate: string,
   endDate: string
 ): Promise<{ date: string; count: number }[]> {
-  const dates = getDatesInRange(startDate, endDate);
-  const counts = await db.dailyReviewCounts.bulkGet(dates);
-  return dates.map((date, i) => ({ date, count: counts[i]?.count ?? 0 }));
+  const res = await axios.get<{ counts: { date: string; count: number }[] }>(`${API_URL}/api/data/reviews/counts`, {
+    params: { startDate, endDate },
+  });
+  return res.data.counts;
 }
 
 export async function getEarliestReviewDate(): Promise<string | null> {
-  const first = await db.dailyReviewCounts.orderBy('date').first();
-  return first?.date ?? null;
+  const res = await axios.get<{ date: string | null }>(`${API_URL}/api/data/reviews/earliest`);
+  return res.data.date;
 }
 
 // Grammar progress operations
-
 export async function getAllGrammarProgress(): Promise<GrammarProgress[]> {
-  return await db.grammarProgress.toArray();
+  const res = await axios.get<{ items: GrammarProgress[] }>(`${API_URL}/api/data/grammar/progress`);
+  return res.data.items;
 }
 
-export async function getGrammarProgressForSkill(
-  skillId: string
-): Promise<GrammarProgress | undefined> {
-  return await db.grammarProgress.get(skillId);
+export async function getGrammarProgressForSkill(skillId: string): Promise<GrammarProgress | undefined> {
+  const items = await getAllGrammarProgress();
+  return items.find((item) => item.skillId === skillId);
 }
 
 export async function saveGrammarProgress(progress: GrammarProgress): Promise<void> {
-  const safe: GrammarProgress = {
-    ...progress,
-    skillId: progress.skillId,
-    levelId: progress.levelId,
-    attempts: Math.max(0, Math.floor(progress.attempts ?? 0)),
-    correct: Math.max(0, Math.floor(progress.correct ?? 0)),
-    masteryPercent: Math.max(0, Math.min(100, Math.floor(progress.masteryPercent ?? 0))),
-    status: progress.status,
-    lastResult: progress.lastResult,
-    lastUpdated: progress.lastUpdated ?? new Date().toISOString(),
-  };
-  await db.grammarProgress.put(safe);
+  await axios.put(`${API_URL}/api/data/grammar/progress/${progress.skillId}`, progress);
 }
 
 export async function resetGrammarProgressForSkill(skillId: string): Promise<void> {
-  await db.grammarProgress.delete(skillId);
+  await axios.delete(`${API_URL}/api/data/grammar/progress/${skillId}`);
 }
 
-export { db };
+export interface BackupPayloadV1 {
+  schemaVersion: 1;
+  exportedAt: string;
+  words: Word[];
+  wordReviewEvents: WordReviewEvent[];
+  streakData: StreakData[];
+  dailyReviewCounts: DailyReviewCount[];
+  grammarProgress: GrammarProgress[];
+}
+
+export async function exportFullBackup(): Promise<BackupPayloadV1> {
+  const res = await axios.get<BackupPayloadV1>(`${API_URL}/api/data/backup/export`);
+  return res.data;
+}
+
+export async function importFullBackup(payload: BackupPayloadV1): Promise<{
+  imported: {
+    words: number;
+    wordReviewEvents: number;
+    streakData: number;
+    dailyReviewCounts: number;
+    grammarProgress: number;
+  };
+}> {
+  const res = await axios.post<{
+    imported: {
+      words: number;
+      wordReviewEvents: number;
+      streakData: number;
+      dailyReviewCounts: number;
+      grammarProgress: number;
+    };
+  }>(`${API_URL}/api/data/backup/import`, payload);
+  return res.data;
+}
+
+const legacyDb = new Dexie('MyVocabDB');
+legacyDb.version(6).stores({
+  words: 'id, english, status, createdAt',
+  streakData: 'id',
+  dailyReviewCounts: 'date',
+  wordReviewEvents: 'id, wordId, createdAt',
+  grammarProgress: 'skillId, levelId',
+});
+
+function toDateOrNow(input: unknown): Date {
+  if (input instanceof Date) return input;
+  if (typeof input === 'string' && input) {
+    const parsed = new Date(input);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+export async function exportLegacyIndexedDbBackup(): Promise<BackupPayloadV1 | null> {
+  const wordsTable = legacyDb.table('words');
+  const streakTable = legacyDb.table('streakData');
+  const dailyTable = legacyDb.table('dailyReviewCounts');
+  const eventsTable = legacyDb.table('wordReviewEvents');
+  const grammarTable = legacyDb.table('grammarProgress');
+
+  const [wordsRaw, streakRaw, dailyRaw, eventsRaw, grammarRaw] = await Promise.all([
+    wordsTable.toArray(),
+    streakTable.toArray(),
+    dailyTable.toArray(),
+    eventsTable.toArray(),
+    grammarTable.toArray(),
+  ]);
+
+  if (
+    wordsRaw.length === 0 &&
+    streakRaw.length === 0 &&
+    dailyRaw.length === 0 &&
+    eventsRaw.length === 0 &&
+    grammarRaw.length === 0
+  ) {
+    return null;
+  }
+
+  const words: Word[] = wordsRaw.map((w: Record<string, unknown>) => ({
+    id: String(w.id),
+    english: String(w.english ?? ''),
+    arabicMeanings: Array.isArray(w.arabicMeanings) ? (w.arabicMeanings as string[]) : [],
+    exampleSentences: Array.isArray(w.exampleSentences) && w.exampleSentences.length > 0
+      ? (w.exampleSentences as string[])
+      : typeof w.exampleSentence === 'string' && w.exampleSentence.trim()
+        ? [String(w.exampleSentence)]
+        : [''],
+    topic: typeof w.topic === 'string' ? w.topic : undefined,
+    status: (w.status as Word['status']) ?? 'new',
+    wrongCount: Number(w.wrongCount ?? 0),
+    correctCount: Number(w.correctCount ?? 0),
+    streak: Number(w.streak ?? 0),
+    createdAt: toDateOrNow(w.createdAt),
+    lastReviewedAt: w.lastReviewedAt ? toDateOrNow(w.lastReviewedAt) : undefined,
+  }));
+
+  const wordReviewEvents: WordReviewEvent[] = eventsRaw.map((e: Record<string, unknown>) => ({
+    id: String(e.id),
+    wordId: String(e.wordId),
+    result: e.result === 'problem' ? 'problem' : 'known',
+    delta: e.delta === -1 ? -1 : 1,
+    createdAt: toDateOrNow(e.createdAt),
+  }));
+
+  const streakData: StreakData[] = streakRaw.map((s: Record<string, unknown>) => ({
+    id: String(s.id ?? 'main-streak'),
+    currentStreak: Number(s.currentStreak ?? 0),
+    longestStreak: Number(s.longestStreak ?? 0),
+    lastActivityDate: String(s.lastActivityDate ?? ''),
+    reviewsToday: Number(s.reviewsToday ?? 0),
+    reviewsDate: String(s.reviewsDate ?? ''),
+  }));
+
+  const dailyReviewCounts: DailyReviewCount[] = dailyRaw.map((d: Record<string, unknown>) => ({
+    date: String(d.date),
+    count: Number(d.count ?? 0),
+  }));
+
+  const grammarProgress: GrammarProgress[] = grammarRaw.map((g: Record<string, unknown>) => ({
+    skillId: String(g.skillId),
+    levelId: String(g.levelId) as GrammarProgress['levelId'],
+    attempts: Number(g.attempts ?? 0),
+    correct: Number(g.correct ?? 0),
+    masteryPercent: Number(g.masteryPercent ?? 0),
+    status: (g.status as GrammarProgress['status']) ?? 'not_started',
+    lastResult: g.lastResult === 'incorrect' ? 'incorrect' : g.lastResult === 'correct' ? 'correct' : undefined,
+    lastUpdated: g.lastUpdated ? String(g.lastUpdated) : undefined,
+  }));
+
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    words,
+    wordReviewEvents,
+    streakData,
+    dailyReviewCounts,
+    grammarProgress,
+  };
+}

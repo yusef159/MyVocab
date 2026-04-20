@@ -31,3 +31,6 @@ npm-debug.log*
 # Temporary files
 tmp/
 temp/
+
+# Local runtime data (SQLite)
+data/

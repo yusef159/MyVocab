@@ -3,6 +3,7 @@ import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
 import type { Word, WordReviewEvent } from '../types';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
+import { exportFullBackup, exportLegacyIndexedDbBackup, importFullBackup } from '../db';
 import {
   LineChart,
   Line,
@@ -774,6 +775,7 @@ export default function WordList() {
   const [wordToDelete, setWordToDelete] = useState<Word | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDelete = async (word: Word) => {
     await removeWord(word.id);
@@ -873,6 +875,70 @@ export default function WordList() {
     setTimeout(() => setImportMessage(null), 3000);
   };
 
+  const handleBackupExport = async () => {
+    try {
+      const backup = await exportFullBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const date = new Date().toISOString().split('T')[0];
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `MyVocab_FullBackup_${date}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setImportMessage({ type: 'success', text: 'Full backup exported successfully.' });
+      setTimeout(() => setImportMessage(null), 3000);
+    } catch (error) {
+      setImportMessage({ type: 'error', text: 'Failed to export full backup.' });
+      setTimeout(() => setImportMessage(null), 3000);
+    }
+  };
+
+  const handleBackupImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const result = await importFullBackup(payload);
+      await loadWords();
+      setImportMessage({
+        type: 'success',
+        text: `Backup imported. Words: ${result.imported.words}, reviews: ${result.imported.wordReviewEvents}, grammar skills: ${result.imported.grammarProgress}.`,
+      });
+      setTimeout(() => setImportMessage(null), 7000);
+    } catch (error) {
+      setImportMessage({ type: 'error', text: 'Failed to import backup JSON file.' });
+      setTimeout(() => setImportMessage(null), 5000);
+    }
+
+    if (backupFileInputRef.current) {
+      backupFileInputRef.current.value = '';
+    }
+  };
+
+  const handleMigrateLegacyData = async () => {
+    try {
+      const legacyBackup = await exportLegacyIndexedDbBackup();
+      if (!legacyBackup) {
+        setImportMessage({ type: 'error', text: 'No legacy browser IndexedDB data found to migrate.' });
+        setTimeout(() => setImportMessage(null), 5000);
+        return;
+      }
+
+      const result = await importFullBackup(legacyBackup);
+      await loadWords();
+      setImportMessage({
+        type: 'success',
+        text: `Legacy browser data migrated to server. Words: ${result.imported.words}, reviews: ${result.imported.wordReviewEvents}.`,
+      });
+      setTimeout(() => setImportMessage(null), 7000);
+    } catch (error) {
+      setImportMessage({ type: 'error', text: 'Failed to migrate legacy browser data to server.' });
+      setTimeout(() => setImportMessage(null), 5000);
+    }
+  };
+
   useEffect(() => {
     loadWords();
   }, [loadWords]);
@@ -904,7 +970,7 @@ export default function WordList() {
         <h2 className="text-3xl font-bold text-white">My Words</h2>
         
         {/* Import/Export Buttons */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <input
             type="file"
             ref={fileInputRef}
@@ -912,6 +978,23 @@ export default function WordList() {
             accept=".xlsx,.xls"
             className="hidden"
           />
+          <input
+            type="file"
+            ref={backupFileInputRef}
+            onChange={handleBackupImport}
+            accept=".json"
+            className="hidden"
+          />
+          <button
+            onClick={handleMigrateLegacyData}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-500 transition-colors"
+            title="Migrate legacy browser IndexedDB data to server"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Migrate Local Data
+          </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
@@ -931,6 +1014,26 @@ export default function WordList() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Export
+          </button>
+          <button
+            onClick={handleBackupExport}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-500 transition-colors"
+            title="Export complete backup JSON (words, reviews, streak, grammar)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7l1 13h12l1-13M10 11v6m4-6v6M9 7V4h6v3" />
+            </svg>
+            Backup JSON
+          </button>
+          <button
+            onClick={() => backupFileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors"
+            title="Import complete backup JSON"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Restore JSON
           </button>
         </div>
       </div>
