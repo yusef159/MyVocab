@@ -222,13 +222,13 @@ export default function ReadingFluencyTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-bold text-white">Reading Fluency</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Reading Fluency</h2>
           <p className="text-gray-400 mt-1">
             Generate an article from your known words, read it aloud, and get fluency feedback.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="flex rounded-lg border border-gray-600 overflow-hidden">
+          <div className="flex flex-wrap rounded-lg border border-gray-600 overflow-hidden">
             {[
               { value: 'short' as const, label: 'Short (~80)' },
               { value: 'medium' as const, label: 'Medium (~140)' },
@@ -266,9 +266,9 @@ export default function ReadingFluencyTab() {
       )}
 
       {article && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-4">
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-2xl font-bold text-white">{article.title}</h3>
+            <h3 className="text-xl sm:text-2xl font-bold text-white break-words">{article.title}</h3>
             <span className="text-sm px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
               {article.wordCount} words
             </span>
@@ -291,7 +291,7 @@ export default function ReadingFluencyTab() {
       )}
 
       {article && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-4">
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 space-y-4">
           <h3 className="text-xl font-semibold text-white">Record your reading</h3>
           {!supportsRecording && (
             <p className="text-amber-300">
@@ -353,9 +353,9 @@ export default function ReadingFluencyTab() {
       )}
 
       {evaluation && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-bold text-white">Fluency Feedback</h3>
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xl sm:text-2xl font-bold text-white">Fluency Feedback</h3>
             <span
               className={`px-4 py-2 rounded-lg font-bold ${
                 evaluation.score >= 80

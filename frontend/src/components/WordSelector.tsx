@@ -75,8 +75,8 @@ export default function WordSelector({
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-      <h3 className="text-2xl font-bold text-white mb-6">{suggestion.english}</h3>
+    <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
+      <h3 className="text-xl sm:text-2xl font-bold text-white mb-6 break-words">{suggestion.english}</h3>
 
       {/* Arabic Meanings */}
       <div className="mb-6">
@@ -141,7 +141,7 @@ export default function WordSelector({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <button
           onClick={onSkip}
           className="flex-1 px-6 py-3 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors"

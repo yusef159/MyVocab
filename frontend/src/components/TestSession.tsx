@@ -626,8 +626,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     ];
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Choose a test</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Choose a test</h2>
           <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">Back</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -661,8 +661,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (activeTestType === 'scenario' && !started && !isLoadingScenarios) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Scenario Writing</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Scenario Writing</h2>
           <button onClick={() => setShowTestTypePicker(true)} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
             Back
           </button>
@@ -708,11 +708,11 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     if (mcQuestions.length === 0) {
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Multiple Choice Meaning</h2>
             <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
             <p className="text-gray-400">Need at least 2 words with multiple meanings to build questions. Add more words or try another test.</p>
           </div>
         </div>
@@ -737,16 +737,16 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       const percentage = Math.round((mcScore / total) * 100);
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning - Results</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Multiple Choice Meaning - Results</h2>
             <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700">
             <div className="text-center mb-6">
               <div className="text-6xl mb-4">
                 {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Test Complete!</h3>
               <p className="text-gray-400">You've completed all {total} questions</p>
             </div>
             
@@ -754,7 +754,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               <div className="flex items-center justify-center gap-4 mb-4">
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Score</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -765,7 +765,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="h-16 w-px bg-gray-600"></div>
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Percentage</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -788,7 +788,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <button onClick={startReadingFluencyFromSession} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-colors">
                 Reading fluency with these words
               </button>
@@ -802,8 +802,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Multiple Choice Meaning</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Multiple Choice Meaning</h2>
           <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
@@ -847,8 +847,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     if (meaningToWordQuestions.length === 0) {
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Meaning → Word (Options)</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Meaning → Word (Options)</h2>
             <button
               onClick={backToPicker}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -856,7 +856,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               Back
             </button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
             <p className="text-gray-400">
               Need at least 5 words with meanings to build questions. Add more words or try another test.
             </p>
@@ -886,8 +886,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       const percentage = Math.round((mtwMcScore / total) * 100);
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Meaning → Word (Options) - Results</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Meaning → Word (Options) - Results</h2>
             <button
               onClick={handleBack}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -895,12 +895,12 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               Back
             </button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700">
             <div className="text-center mb-6">
               <div className="text-6xl mb-4">
                 {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Test Complete!</h3>
               <p className="text-gray-400">You've completed all {total} questions</p>
             </div>
 
@@ -909,7 +909,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Score</p>
                   <p
-                    className={`text-4xl font-bold ${
+                    className={`text-3xl sm:text-4xl font-bold ${
                       percentage >= 80
                         ? 'text-emerald-400'
                         : percentage >= 60
@@ -924,7 +924,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Percentage</p>
                   <p
-                    className={`text-4xl font-bold ${
+                    className={`text-3xl sm:text-4xl font-bold ${
                       percentage >= 80
                         ? 'text-emerald-400'
                         : percentage >= 60
@@ -952,7 +952,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <button
                 onClick={startReadingFluencyFromSession}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-colors"
@@ -972,8 +972,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Meaning → Word (Options)</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Meaning → Word (Options)</h2>
           <button
             onClick={backToPicker}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -1086,16 +1086,16 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       const percentage = Math.round((twyhScore / total) * 100);
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Type What You Hear - Results</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Type What You Hear - Results</h2>
             <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700">
             <div className="text-center mb-6">
               <div className="text-6xl mb-4">
                 {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Test Complete!</h3>
               <p className="text-gray-400">You've completed all {total} words</p>
             </div>
             
@@ -1103,7 +1103,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               <div className="flex items-center justify-center gap-4 mb-4">
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Score</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -1114,7 +1114,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="h-16 w-px bg-gray-600"></div>
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Percentage</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -1137,7 +1137,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <button onClick={startReadingFluencyFromSession} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-colors">
                 Reading fluency with these words
               </button>
@@ -1151,8 +1151,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Type What You Hear</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Type What You Hear</h2>
           <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
@@ -1186,7 +1186,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
               <div className="rounded-xl bg-gray-700/80 border-2 border-amber-400/60 p-5">
                 <p className="text-amber-200/90 text-sm font-medium uppercase tracking-wide mb-2">Correct spelling</p>
-                <p className="text-2xl font-bold text-white tracking-wide">{currentWord.english}</p>
+                <p className="text-xl sm:text-2xl font-bold text-white tracking-wide">{currentWord.english}</p>
               </div>
               <button onClick={handleTwyhNext} className="w-full py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500">
                 {isLast ? 'See score' : 'Next word \u2192'}
@@ -1203,8 +1203,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     if (meaningTypingQuestions.length === 0) {
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Type Word From Meaning</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Type Word From Meaning</h2>
             <button
               onClick={backToPicker}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -1212,7 +1212,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               Back
             </button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
             <p className="text-gray-400">
               Need at least 1 word with a meaning to build questions. Add more words or try another test.
             </p>
@@ -1246,8 +1246,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       const percentage = Math.round((mtwTypingScore / total) * 100);
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Type Word From Meaning - Results</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Type Word From Meaning - Results</h2>
             <button
               onClick={handleBack}
               className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -1255,12 +1255,12 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               Back
             </button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700">
             <div className="text-center mb-6">
               <div className="text-6xl mb-4">
                 {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Test Complete!</h3>
               <p className="text-gray-400">You've completed all {total} meanings</p>
             </div>
 
@@ -1269,7 +1269,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Score</p>
                   <p
-                    className={`text-4xl font-bold ${
+                    className={`text-3xl sm:text-4xl font-bold ${
                       percentage >= 80
                         ? 'text-emerald-400'
                         : percentage >= 60
@@ -1284,7 +1284,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Percentage</p>
                   <p
-                    className={`text-4xl font-bold ${
+                    className={`text-3xl sm:text-4xl font-bold ${
                       percentage >= 80
                         ? 'text-emerald-400'
                         : percentage >= 60
@@ -1312,7 +1312,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <button
                 onClick={startReadingFluencyFromSession}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-colors"
@@ -1332,8 +1332,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Type Word From Meaning</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Type Word From Meaning</h2>
           <button
             onClick={backToPicker}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"
@@ -1405,7 +1405,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <p className="text-amber-200/90 text-sm font-medium uppercase tracking-wide mb-2">
                   Correct word
                 </p>
-                <p className="text-2xl font-bold text-white tracking-wide">{current.word.english}</p>
+                <p className="text-xl sm:text-2xl font-bold text-white tracking-wide">{current.word.english}</p>
               </div>
               <button
                 onClick={handleMtwTypingNext}
@@ -1424,9 +1424,9 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (activeTestType === 'readingFluency') {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-3xl font-bold text-white">Reading Fluency</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Reading Fluency</h2>
             <p className="text-gray-400 mt-1">
               Build an article from this test session&apos;s words, read it aloud, and get AI feedback.
             </p>
@@ -1484,7 +1484,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
         {readingArticle && (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-2xl font-bold text-white">{readingArticle.title}</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white">{readingArticle.title}</h3>
               <span className="text-sm px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
                 {readingArticle.wordCount} words
               </span>
@@ -1567,8 +1567,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
         {readingEvaluation && (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-bold text-white">Fluency Feedback</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xl sm:text-2xl font-bold text-white">Fluency Feedback</h3>
               <span
                 className={`px-4 py-2 rounded-lg font-bold ${
                   readingEvaluation.score >= 80
@@ -1627,11 +1627,11 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     if (synonymLoading || synonymQuestions.length === 0) {
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Word Synonym Match</h2>
             <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
             {synonymLoading ? <p className="text-gray-400">Loading synonyms...</p> : <p className="text-gray-400">Not enough synonyms found. Try again or pick another test.</p>}
           </div>
         </div>
@@ -1658,16 +1658,16 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
       const percentage = Math.round((synonymScore / stotal) * 100);
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white">Word Synonym Match - Results</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">Word Synonym Match - Results</h2>
             <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
           </div>
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+          <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700">
             <div className="text-center mb-6">
               <div className="text-6xl mb-4">
                 {percentage >= 80 ? '🎉' : percentage >= 60 ? '👍' : '📚'}
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Test Complete!</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Test Complete!</h3>
               <p className="text-gray-400">You've completed all {stotal} questions</p>
             </div>
             
@@ -1675,7 +1675,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               <div className="flex items-center justify-center gap-4 mb-4">
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Score</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -1686,7 +1686,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
                 <div className="h-16 w-px bg-gray-600"></div>
                 <div className="text-center">
                   <p className="text-gray-400 text-sm mb-1">Percentage</p>
-                  <p className={`text-4xl font-bold ${
+                  <p className={`text-3xl sm:text-4xl font-bold ${
                     percentage >= 80 ? 'text-emerald-400' :
                     percentage >= 60 ? 'text-amber-400' :
                     'text-rose-400'
@@ -1709,7 +1709,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <button onClick={startReadingFluencyFromSession} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-colors">
                 Reading fluency with these words
               </button>
@@ -1723,8 +1723,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     }
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Word Synonym Match</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Word Synonym Match</h2>
           <button onClick={backToPicker} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
@@ -1763,8 +1763,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (false) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Test Session</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Test Session</h2>
           <button
             onClick={handleBack}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -1799,8 +1799,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : 0;
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Test complete</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Test complete</h2>
           <button
             onClick={handleBack}
             className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -1879,11 +1879,11 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (activeTestType === 'scenario' && !started && isLoadingScenarios) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Test Session</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Test Session</h2>
           <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
-        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+        <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <svg className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-4" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -1898,8 +1898,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
   if (!currentScenario) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-white">Test Session</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Test Session</h2>
           <button onClick={handleBack} className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">Back</button>
         </div>
         <p className="text-gray-400">No scenario loaded.</p>
@@ -1909,8 +1909,8 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold text-white">Test Session</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Test Session</h2>
         <button
           onClick={handleBack}
           className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -1921,7 +1921,7 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
       {/* Progress + change scenario */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 gap-2 mb-2">
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Scenario</span>
             <span className="text-white font-medium">{currentScenarioIndex + 1} of {scenarios.length}</span>

@@ -408,15 +408,15 @@ export default function GrammarTab() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Grammar</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Grammar</h2>
           <p className="text-gray-400 text-sm mt-1">AI-powered lessons and practice for every level</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-4 py-3 text-center">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 sm:px-4 py-3 text-center">
             <p className="text-2xl font-bold text-white">{overallStats.mastered}<span className="text-gray-500 text-lg">/{overallStats.total}</span></p>
             <p className="text-xs text-gray-400 mt-0.5">Skills mastered</p>
           </div>
-          <div className={`bg-gradient-to-br ${LEVEL_COLORS[currentLevel].gradient} border ${LEVEL_COLORS[currentLevel].border}/30 rounded-xl px-4 py-3 text-center`}>
+          <div className={`bg-gradient-to-br ${LEVEL_COLORS[currentLevel].gradient} border ${LEVEL_COLORS[currentLevel].border}/30 rounded-xl px-3 sm:px-4 py-3 text-center`}>
             <p className={`text-2xl font-bold ${LEVEL_COLORS[currentLevel].text}`}>{currentLevel}</p>
             <p className="text-xs text-gray-400 mt-0.5">Your level</p>
           </div>
@@ -430,7 +430,7 @@ export default function GrammarTab() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
         {/* Sidebar: Levels */}
         <div className="lg:col-span-3 space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">Levels</p>
@@ -484,11 +484,11 @@ export default function GrammarTab() {
           {activeSkill && (
             <div className="bg-gray-800/30 border border-gray-700/30 rounded-2xl overflow-hidden">
               {/* Tab Switcher */}
-              <div className="flex items-center border-b border-gray-700/30">
+              <div className="flex flex-wrap items-center border-b border-gray-700/30">
                 <button
                   type="button"
                   onClick={() => setActiveTab('lesson')}
-                  className={`flex-1 px-6 py-3.5 text-sm font-semibold transition-all ${
+                  className={`flex-1 min-w-[140px] px-4 sm:px-6 py-3.5 text-sm font-semibold transition-all ${
                     activeTab === 'lesson'
                       ? 'text-white border-b-2 border-blue-500 bg-gray-800/30'
                       : 'text-gray-400 hover:text-gray-200'
@@ -502,7 +502,7 @@ export default function GrammarTab() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('practice')}
-                  className={`flex-1 px-6 py-3.5 text-sm font-semibold transition-all ${
+                  className={`flex-1 min-w-[140px] px-4 sm:px-6 py-3.5 text-sm font-semibold transition-all ${
                     activeTab === 'practice'
                       ? 'text-white border-b-2 border-emerald-500 bg-gray-800/30'
                       : 'text-gray-400 hover:text-gray-200'
@@ -516,7 +516,7 @@ export default function GrammarTab() {
                 <button
                   type="button"
                   onClick={clearCurrentSkill}
-                  className="px-4 py-3.5 text-gray-500 hover:text-gray-300 transition-colors"
+                className="px-4 py-3.5 text-gray-500 hover:text-gray-300 transition-colors ml-auto"
                   title="Close"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -524,7 +524,7 @@ export default function GrammarTab() {
               </div>
 
               {/* Panel Content */}
-              <div className="p-6 max-h-[500px] overflow-y-auto">
+              <div className="p-4 sm:p-6 max-h-[500px] overflow-y-auto">
                 {activeTab === 'lesson' ? (
                   <LessonView skillTitle={activeSkill.title} />
                 ) : (

@@ -102,7 +102,7 @@ export default function ManualInput() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold text-white">Manual Word Input</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold text-white">Manual Word Input</h2>
 
       {error && (
         <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">
@@ -114,7 +114,7 @@ export default function ManualInput() {
       )}
 
       {suggestions.length === 0 ? (
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
           {/* Word Input */}
           <div className="mb-6">
             <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
@@ -143,10 +143,10 @@ export default function ManualInput() {
             <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
               Input Mode
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={() => setInputMode('manual')}
-                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                className={`flex-1 px-4 sm:px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
                   inputMode === 'manual'
                     ? 'bg-emerald-600 text-white'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -159,7 +159,7 @@ export default function ManualInput() {
               </button>
               <button
                 onClick={() => setInputMode('ai')}
-                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                className={`flex-1 px-4 sm:px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
                   inputMode === 'ai'
                     ? 'bg-emerald-600 text-white'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -286,8 +286,8 @@ export default function ManualInput() {
               {successMessage}
             </div>
           )}
-          <div className="mb-4 flex items-center justify-between text-gray-400">
-            <span>Select meaning and sentence for "{suggestions[0].english}"</span>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-gray-400">
+            <span className="text-sm sm:text-base">Select meaning and sentence for "{suggestions[0].english}"</span>
             <button
               onClick={handleCancel}
               className="text-gray-500 hover:text-gray-300 transition-colors"

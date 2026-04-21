@@ -188,23 +188,23 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-3xl font-bold text-white">Dashboard</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h2>
 
       <RiskWordsReminder />
 
       {/* Streak Section */}
-      <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 text-white">
-        <div className="flex items-center justify-between">
+      <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 sm:p-6 text-white">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <p className="text-orange-100 text-sm uppercase tracking-wide">Current Streak</p>
-            <p className="text-5xl font-bold mt-1">
+            <p className="text-4xl sm:text-5xl font-bold mt-1">
               {streak?.currentStreak || 0}
               <span className="text-2xl ml-2">days</span>
             </p>
           </div>
-          <div className="text-right">
+          <div className="sm:text-right">
             <p className="text-orange-100 text-sm uppercase tracking-wide">Longest Streak</p>
-            <p className="text-3xl font-bold mt-1">
+            <p className="text-2xl sm:text-3xl font-bold mt-1">
               {streak?.longestStreak || 0}
               <span className="text-lg ml-2">days</span>
             </p>
@@ -218,33 +218,33 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
           <p className="text-gray-400 text-sm uppercase tracking-wide">Total Words</p>
-          <p className="text-4xl font-bold text-white mt-2">{stats.total}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-white mt-2">{stats.total}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-emerald-500/30">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-emerald-500/30">
           <p className="text-emerald-400 text-sm uppercase tracking-wide">Known</p>
-          <p className="text-4xl font-bold text-emerald-400 mt-2">{stats.known}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">{stats.known}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-red-500/30">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-red-500/30">
           <p className="text-red-400 text-sm uppercase tracking-wide">Problem</p>
-          <p className="text-4xl font-bold text-red-400 mt-2">{stats.problem}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">{stats.problem}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-blue-500/30">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-blue-500/30">
           <p className="text-blue-400 text-sm uppercase tracking-wide">New</p>
-          <p className="text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-amber-500/30">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-amber-500/30">
           <p className="text-amber-400 text-sm uppercase tracking-wide">In Risk</p>
-          <p className="text-4xl font-bold text-amber-400 mt-2">{riskCount}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-amber-400 mt-2">{riskCount}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-purple-500/30 col-span-2 md:col-span-5">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-purple-500/30 sm:col-span-2 md:col-span-5">
           <p className="text-purple-400 text-sm uppercase tracking-wide">
             Grammar Skills
           </p>
@@ -282,7 +282,7 @@ export default function Dashboard() {
               style={{ width: `${(stats.new / stats.total) * 100}%` }}
             />
           </div>
-          <div className="flex justify-between mt-2 text-sm text-gray-400">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-2 mt-2 text-sm text-gray-400">
             <span className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
               Known ({Math.round((stats.known / stats.total) * 100)}%)
@@ -310,7 +310,7 @@ export default function Dashboard() {
       )}
 
       {/* Review activity graph */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 transition-opacity duration-300">
+      <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 transition-opacity duration-300">
         <h3 className="text-lg font-semibold text-white mb-4">Words reviewed</h3>
         <div className="flex flex-wrap gap-2 mb-4">
           {REVIEW_RANGE_OPTIONS.map(({ key, label }) => (

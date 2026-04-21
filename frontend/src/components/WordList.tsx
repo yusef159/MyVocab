@@ -332,9 +332,9 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4" onClick={onClose}>
       <div
-        className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto"
+        className="bg-gray-800 rounded-xl p-4 sm:p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -661,7 +661,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div className="bg-gray-700/50 rounded-lg p-4">
                 <p className="text-gray-400 text-xs uppercase tracking-wide">Known Count</p>
                 {isEditingCounts ? (
@@ -719,7 +719,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
             )}
 
             {!isEditingCounts && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Total Reviews</p>
                   <p className="mt-2 text-2xl font-bold text-white">{totalReviews}</p>
@@ -966,11 +966,11 @@ export default function WordList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold text-white">My Words</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
         
         {/* Import/Export Buttons */}
-        <div className="flex gap-2 flex-wrap justify-end">
+        <div className="flex gap-2 flex-wrap">
           <input
             type="file"
             ref={fileInputRef}
@@ -1059,7 +1059,7 @@ export default function WordList() {
       )}
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="flex-1">
           <input
             type="text"
@@ -1069,7 +1069,7 @@ export default function WordList() {
             className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(['all', 'known', 'problem', 'new'] as const).map((status) => (
             <button
               key={status}
@@ -1231,12 +1231,12 @@ export default function WordList() {
               key={word.id}
               className="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                 {/* Word Content */}
                 <div className="flex-1 min-w-0">
                   {/* English Word with Speaker */}
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-bold text-white">{word.english}</h3>
+                    <h3 className="text-lg sm:text-xl font-bold text-white break-words">{word.english}</h3>
                     <button
                       onClick={() => speakWord(word.english)}
                       className="p-2 rounded-full bg-gray-700 hover:bg-emerald-600 text-gray-300 hover:text-white transition-colors"
@@ -1301,7 +1301,7 @@ export default function WordList() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex gap-2 flex-shrink-0 self-end sm:self-auto">
                   <button
                     onClick={() => setSelectedWordId(word.id)}
                     className="p-2 rounded-full bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition-colors"
@@ -1335,9 +1335,9 @@ export default function WordList() {
 
       {/* Delete Confirmation Modal */}
       {wordToDelete && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setWordToDelete(null)}>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setWordToDelete(null)}>
           <div 
-            className="bg-gray-800 rounded-xl p-6 max-w-sm w-full border border-gray-700"
+            className="bg-gray-800 rounded-xl p-4 sm:p-6 max-w-sm w-full border border-gray-700"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">

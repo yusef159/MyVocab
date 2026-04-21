@@ -76,13 +76,13 @@ export default function RiskWordsReminder() {
       : `I'm noticing ${sessionCount} words you haven't seen in a while. Want a quick refresh?`;
 
   return (
-    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-6">
+    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 sm:p-4 mb-6">
       <p className="text-amber-100 text-sm font-medium mb-3">{message}</p>
       <div className="flex flex-wrap gap-2 mb-3">
         {toShow.map((w) => (
           <span
             key={w.id}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/80 text-white text-sm border border-gray-600"
+            className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/80 text-white text-sm border border-gray-600"
           >
             <span className="font-medium">{w.english}</span>
             <span className="text-gray-400 text-xs">

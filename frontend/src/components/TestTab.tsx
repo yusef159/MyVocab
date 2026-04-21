@@ -122,8 +122,8 @@ export default function TestTab() {
   if (knownWords.length === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold text-white">Test</h2>
-        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Test</h2>
+        <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <p className="text-gray-400 text-lg">No known words to test!</p>
           <p className="text-gray-500 mt-2">
             Mark some words as known in flashcards first.
@@ -149,13 +149,13 @@ export default function TestTab() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold text-white">Test</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold text-white">Test</h2>
       
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
         <h3 className="text-xl font-semibold text-white mb-4">Select Known Words</h3>
         <p className="text-gray-400 mb-6">Choose which known words you want to test</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <button
             type="button"
             onClick={() => setProgressFilter('all')}
@@ -274,7 +274,7 @@ export default function TestTab() {
           <h3 className="text-xl font-semibold text-white mb-4">Select Test Type</h3>
           <p className="text-gray-400 mb-4">Choose a test type to practice your vocabulary</p>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <button
               type="button"
               onClick={() => setSelectedTestType('scenario')}
@@ -473,7 +473,7 @@ export default function TestTab() {
               </div>
 
               {/* Number Display with Controls */}
-              <div className="flex items-center justify-center gap-4">
+              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -490,7 +490,7 @@ export default function TestTab() {
                 </button>
 
                 <div className="relative">
-                  <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-xl px-8 py-4 min-w-[120px] text-center">
+                  <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-xl px-6 sm:px-8 py-4 min-w-[110px] text-center">
                     <input
                       type="number"
                       min={1}

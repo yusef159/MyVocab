@@ -731,8 +731,8 @@ export default function Flashcards() {
   if (words.length === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold text-white">Flashcards</h2>
-        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
+        <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <p className="text-gray-400 text-lg">No words to review!</p>
           <p className="text-gray-500 mt-2">
             Add some words first by generating or entering them manually.
@@ -757,9 +757,9 @@ export default function Flashcards() {
   if (!sessionStarted) {
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold text-white">Flashcards</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
         
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
           <h3 className="text-xl font-semibold text-white mb-4">Choose Your Session</h3>
           <p className="text-gray-400 mb-6">Select which words you want to practice</p>
 
@@ -1304,8 +1304,8 @@ export default function Flashcards() {
 
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold text-white">Flashcards</h2>
-        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
+        <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <div className="text-6xl mb-4">🎉</div>
           <p className="text-2xl font-bold text-white mb-2">Session Complete!</p>
           <p className="text-gray-400 mb-6">
@@ -1369,7 +1369,7 @@ export default function Flashcards() {
             );
           })()}
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               {(() => {
                 const allWordsKnown = shuffledWords.every(word => word.status === 'known');
                 const isUnlocked = knownPct === 100 && allWordsKnown;
@@ -1429,8 +1429,8 @@ export default function Flashcards() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold text-white">Flashcards</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
         <div className="flex items-center gap-2">
           {/* Word auto-speak: Mute/Unmute */}
           <button
@@ -1465,8 +1465,8 @@ export default function Flashcards() {
       {/* Streak Achievement Message */}
       {showStreakMessage && (
         <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-6 border border-orange-400/50 shadow-lg animate-pulse">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-4">
               <div className="text-4xl">🔥</div>
               <div>
                 <p className="text-white font-bold text-xl">Streak Achieved!</p>
@@ -1516,7 +1516,7 @@ export default function Flashcards() {
       {/* Flashcard: key so next word appears immediately (no flip animation on advance); flip animation only when revealing this card */}
       <div
         onClick={handleFlip}
-        className="relative h-80 cursor-pointer perspective-1000"
+        className="relative h-[22rem] sm:h-80 cursor-pointer perspective-1000"
       >
         <div
           key={currentIndex}
@@ -1535,7 +1535,7 @@ export default function Flashcards() {
           >
             <div className="text-center p-8">
               <div className="flex items-center justify-center gap-3 mb-4">
-                <p className="text-4xl font-bold text-white">
+                <p className="text-3xl sm:text-4xl font-bold text-white break-words">
                   {currentWord?.english}
                 </p>
                 <button
@@ -1566,12 +1566,12 @@ export default function Flashcards() {
             <div className="text-center p-8">
               <div className="mb-6" dir="rtl">
                 {currentWord?.arabicMeanings.map((meaning, i) => (
-                  <p key={i} className="text-2xl font-bold text-white mb-2">
+                  <p key={i} className="text-xl sm:text-2xl font-bold text-white mb-2">
                     {meaning}
                   </p>
                 ))}
               </div>
-              <div className="text-gray-300 text-lg italic mb-4 space-y-2">
+              <div className="text-gray-300 text-base sm:text-lg italic mb-4 space-y-2">
                 {(currentWord?.exampleSentences ?? []).filter(Boolean).map((sent, i) => (
                   <p key={i}>
                     &quot;{currentWord?.english
@@ -1628,7 +1628,7 @@ export default function Flashcards() {
       </p>
 
       {/* Action Buttons */}
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <button
           onClick={handleDontKnow}
           className="flex-1 px-6 py-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-500 transition-colors"
