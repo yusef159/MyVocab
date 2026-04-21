@@ -7,6 +7,25 @@ export interface DailyReviewCount {
   count: number;
 }
 
+export type FlashcardSessionFilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
+
+export interface FlashcardSessionSnapshot {
+  wordIds: string[];
+  currentIndex: number;
+  filterType: FlashcardSessionFilterType;
+  dateRange: number;
+  savedAt: string;
+  knownCount: number;
+  problemCount: number;
+}
+
+export type AppStateKey =
+  | 'flashcards:last_completed_session'
+  | 'flashcards:active_session'
+  | 'flashcards:session_size'
+  | 'risk:completed_date'
+  | 'reading_fluency:state';
+
 const API_URL = '';
 
 export async function wordExists(english: string): Promise<boolean> {
@@ -120,6 +139,58 @@ export async function getReviewCountsByDateRange(
 export async function getEarliestReviewDate(): Promise<string | null> {
   const res = await axios.get<{ date: string | null }>(`${API_URL}/api/data/reviews/earliest`);
   return res.data.date;
+}
+
+export async function getFlashcardsLastCompletedSession(): Promise<FlashcardSessionSnapshot | null> {
+  const res = await axios.get<{ session: FlashcardSessionSnapshot | null }>(
+    `${API_URL}/api/data/flashcards/last-completed-session`
+  );
+  return res.data.session;
+}
+
+export async function saveFlashcardsLastCompletedSession(session: FlashcardSessionSnapshot): Promise<void> {
+  await axios.put(`${API_URL}/api/data/flashcards/last-completed-session`, session);
+}
+
+export async function getAppState<T>(key: AppStateKey): Promise<T | null> {
+  const res = await axios.get<{ value: T | null }>(`${API_URL}/api/data/app-state/${key}`);
+  return res.data.value;
+}
+
+export async function setAppState<T>(key: AppStateKey, value: T): Promise<void> {
+  await axios.put(`${API_URL}/api/data/app-state/${key}`, { value });
+}
+
+export async function getFlashcardsActiveSession(): Promise<FlashcardSessionSnapshot | null> {
+  return getAppState<FlashcardSessionSnapshot>('flashcards:active_session');
+}
+
+export async function saveFlashcardsActiveSession(session: FlashcardSessionSnapshot | null): Promise<void> {
+  await setAppState('flashcards:active_session', session);
+}
+
+export async function getFlashcardsSessionSize(): Promise<number | null> {
+  return getAppState<number>('flashcards:session_size');
+}
+
+export async function saveFlashcardsSessionSize(size: number): Promise<void> {
+  await setAppState('flashcards:session_size', size);
+}
+
+export async function getRiskSessionCompletedDate(): Promise<string | null> {
+  return getAppState<string>('risk:completed_date');
+}
+
+export async function saveRiskSessionCompletedDate(date: string): Promise<void> {
+  await setAppState('risk:completed_date', date);
+}
+
+export async function getReadingFluencyState<T>(): Promise<T | null> {
+  return getAppState<T>('reading_fluency:state');
+}
+
+export async function saveReadingFluencyState<T>(state: T): Promise<void> {
+  await setAppState('reading_fluency:state', state);
 }
 
 // Grammar progress operations

@@ -1,33 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getRiskWords } from '../db';
+import { getRiskSessionCompletedDate, getRiskWords, saveRiskSessionCompletedDate } from '../db';
 import type { RiskWord } from '../types';
 
 const MIN_SESSION = 3;
 const MAX_SESSION = 8;
 const DISPLAY_COUNT = 5;
 
-const RISK_SESSION_COMPLETED_KEY = 'riskSessionCompletedDate';
-
 function todayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function setRiskSessionCompletedToday(): void {
-  try {
-    localStorage.setItem(RISK_SESSION_COMPLETED_KEY, todayKey());
-  } catch {
-    // ignore
-  }
+export async function setRiskSessionCompletedToday(): Promise<void> {
+  await saveRiskSessionCompletedDate(todayKey());
 }
 
-export function didCompleteRiskSessionToday(): boolean {
-  try {
-    return localStorage.getItem(RISK_SESSION_COMPLETED_KEY) === todayKey();
-  } catch {
-    return false;
-  }
+export async function didCompleteRiskSessionToday(): Promise<boolean> {
+  const date = await getRiskSessionCompletedDate();
+  return date === todayKey();
 }
 
 function formatDaysAgo(days: number): string {
@@ -43,13 +34,22 @@ export default function RiskWordsReminder() {
   const [riskWords, setRiskWords] = useState<RiskWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
+  const [completedToday, setCompletedToday] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
-    getRiskWords()
-      .then((words) => {
-        if (!cancelled) setRiskWords(words);
+    Promise.all([getRiskWords(), didCompleteRiskSessionToday()])
+      .then(([words, doneToday]) => {
+        if (cancelled) return;
+        setRiskWords(words);
+        setCompletedToday(doneToday);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRiskWords([]);
+          setCompletedToday(false);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -66,7 +66,7 @@ export default function RiskWordsReminder() {
     navigate('/flashcards', { state: { riskWordIds: sessionWordIds } });
   };
 
-  if (loading || riskWords.length < MIN_SESSION || dismissed || didCompleteRiskSessionToday())
+  if (loading || riskWords.length < MIN_SESSION || dismissed || completedToday)
     return null;
 
   const toShow = riskWords.slice(0, DISPLAY_COUNT);

@@ -59,6 +59,25 @@ export interface GrammarProgress {
   lastUpdated?: string;
 }
 
+export type FlashcardSessionFilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
+
+export interface FlashcardSessionSnapshot {
+  wordIds: string[];
+  currentIndex: number;
+  filterType: FlashcardSessionFilterType;
+  dateRange: number;
+  savedAt: string;
+  knownCount: number;
+  problemCount: number;
+}
+
+export type AppStateKey =
+  | 'flashcards:last_completed_session'
+  | 'flashcards:active_session'
+  | 'flashcards:session_size'
+  | 'risk:completed_date'
+  | 'reading_fluency:state';
+
 export interface BackupPayloadV1 {
   schemaVersion: 1;
   exportedAt: string;
@@ -71,6 +90,7 @@ export interface BackupPayloadV1 {
 
 const STREAK_ID = 'main-streak';
 const RISK_DAYS_THRESHOLD = 14;
+const FLASHCARD_LAST_COMPLETED_SESSION_KEY = 'flashcards:last_completed_session';
 
 const DB_PATH = process.env.DB_PATH || './data/myvocab.db';
 mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -96,6 +116,32 @@ function parseJsonArray(value: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+function isFlashcardSessionFilterType(value: unknown): value is FlashcardSessionFilterType {
+  return value === 'all' || value === 'new' || value === 'problem' || value === 'risk' || value === 'date';
+}
+
+function normalizeFlashcardSessionSnapshot(input: unknown): FlashcardSessionSnapshot | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  if (!Array.isArray(raw.wordIds) || raw.wordIds.some((id) => typeof id !== 'string')) return null;
+  if (!isFlashcardSessionFilterType(raw.filterType)) return null;
+
+  const currentIndex = Number(raw.currentIndex);
+  const dateRange = Number(raw.dateRange);
+  const knownCount = Number(raw.knownCount);
+  const problemCount = Number(raw.problemCount);
+
+  return {
+    wordIds: raw.wordIds,
+    currentIndex: Number.isFinite(currentIndex) ? Math.max(0, Math.floor(currentIndex)) : 0,
+    filterType: raw.filterType,
+    dateRange: Number.isFinite(dateRange) ? Math.max(0, Math.floor(dateRange)) : 30,
+    savedAt: typeof raw.savedAt === 'string' ? raw.savedAt : nowIso(),
+    knownCount: Number.isFinite(knownCount) ? Math.max(0, Math.floor(knownCount)) : 0,
+    problemCount: Number.isFinite(problemCount) ? Math.max(0, Math.floor(problemCount)) : 0,
+  };
 }
 
 function toWord(row: Record<string, unknown>): Word {
@@ -196,10 +242,63 @@ export function initDatabase(): void {
       last_updated TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_words_status ON words(status);
     CREATE INDEX IF NOT EXISTS idx_word_review_events_word_id ON word_review_events(word_id);
     CREATE INDEX IF NOT EXISTS idx_word_review_events_created_at ON word_review_events(created_at);
   `);
+}
+
+export function saveFlashcardLastCompletedSession(session: FlashcardSessionSnapshot): void {
+  const normalized = normalizeFlashcardSessionSnapshot(session);
+  if (!normalized) return;
+  db.prepare(
+    `INSERT INTO app_state (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`
+  ).run(FLASHCARD_LAST_COMPLETED_SESSION_KEY, JSON.stringify(normalized), nowIso());
+}
+
+export function getFlashcardLastCompletedSession(): FlashcardSessionSnapshot | null {
+  const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(FLASHCARD_LAST_COMPLETED_SESSION_KEY) as
+    | { value: string }
+    | undefined;
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return normalizeFlashcardSessionSnapshot(parsed);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAppStateJson(key: AppStateKey, value: unknown): void {
+  db.prepare(
+    `INSERT INTO app_state (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`
+  ).run(key, JSON.stringify(value ?? null), nowIso());
+}
+
+export function getAppStateJson<T = unknown>(key: AppStateKey): T | null {
+  const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined;
+  if (!row?.value) return null;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function wordExists(english: string): boolean {

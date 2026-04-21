@@ -7,7 +7,9 @@ import {
   exportFullBackup,
   getAllGrammarProgress,
   getAllWords,
+  getAppStateJson,
   getEarliestReviewDate,
+  getFlashcardLastCompletedSession,
   getReviewCountsByDateRange,
   getRiskWords,
   getStreakData,
@@ -19,11 +21,15 @@ import {
   incrementWrongCount,
   resetGrammarProgressForSkill,
   saveGrammarProgress,
+  saveAppStateJson,
+  saveFlashcardLastCompletedSession,
   updateStreak,
   updateWordContent,
   updateWordReviewCounts,
   wordExists,
   type BackupPayloadV1,
+  type AppStateKey,
+  type FlashcardSessionSnapshot,
 } from '../db/index.js';
 
 const router = Router();
@@ -65,6 +71,24 @@ const grammarProgressSchema = z.object({
   lastResult: z.enum(['correct', 'incorrect']).optional(),
   lastUpdated: z.string().optional(),
 });
+
+const flashcardSessionSchema = z.object({
+  wordIds: z.array(z.string()),
+  currentIndex: z.number().int().min(0),
+  filterType: z.enum(['all', 'new', 'problem', 'risk', 'date']),
+  dateRange: z.number().int().min(0),
+  savedAt: z.string(),
+  knownCount: z.number().int().min(0),
+  problemCount: z.number().int().min(0),
+});
+
+const appStateKeySchema = z.enum([
+  'flashcards:last_completed_session',
+  'flashcards:active_session',
+  'flashcards:session_size',
+  'risk:completed_date',
+  'reading_fluency:state',
+]);
 
 const backupSchema = z.object({
   schemaVersion: z.literal(1),
@@ -223,6 +247,40 @@ router.get('/reviews/earliest', (_req, res) => {
 
 router.get('/grammar/progress', (_req, res) => {
   res.json({ items: getAllGrammarProgress() });
+});
+
+router.get('/flashcards/last-completed-session', (_req, res) => {
+  res.json({ session: getFlashcardLastCompletedSession() });
+});
+
+router.put('/flashcards/last-completed-session', (req, res) => {
+  const parsed = flashcardSessionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
+  }
+  saveFlashcardLastCompletedSession(parsed.data as FlashcardSessionSnapshot);
+  res.json({ ok: true });
+});
+
+router.get('/app-state/:key', (req, res) => {
+  const parsed = appStateKeySchema.safeParse(req.params.key);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid app-state key' });
+  }
+  res.json({ value: getAppStateJson(parsed.data as AppStateKey) });
+});
+
+router.put('/app-state/:key', (req, res) => {
+  const keyParsed = appStateKeySchema.safeParse(req.params.key);
+  if (!keyParsed.success) {
+    return res.status(400).json({ error: 'Invalid app-state key' });
+  }
+  const bodyParsed = z.object({ value: z.unknown() }).safeParse(req.body);
+  if (!bodyParsed.success) {
+    return res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.errors });
+  }
+  saveAppStateJson(keyParsed.data as AppStateKey, bodyParsed.data.value);
+  res.json({ ok: true });
 });
 
 router.put('/grammar/progress/:skillId', (req, res) => {

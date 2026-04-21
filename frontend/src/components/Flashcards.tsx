@@ -1,9 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
-import { getRiskWords } from '../db';
+import {
+  getFlashcardsActiveSession,
+  getFlashcardsLastCompletedSession,
+  getFlashcardsSessionSize,
+  getRiskWords,
+  saveFlashcardsActiveSession,
+  saveFlashcardsLastCompletedSession,
+  saveFlashcardsSessionSize,
+  type FlashcardSessionSnapshot,
+} from '../db';
 import type { Word } from '../types';
-import { getSavedSession, saveSession, clearSavedSession, getSavedSessionSize, saveSessionSize, saveLastCompletedSession, getLastCompletedSession } from '../lib/flashcardSessionStorage';
 import { setRiskSessionCompletedToday } from './RiskWordsReminder';
 import TestSession from './TestSession';
 
@@ -172,10 +180,12 @@ export default function Flashcards() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [dateRange, setDateRange] = useState(30);
-  const [sessionSize, setSessionSize] = useState(getSavedSessionSize);
+  const [sessionSize, setSessionSize] = useState(20);
+  const [sessionSizeLoaded, setSessionSizeLoaded] = useState(false);
   const [problemProgressFilter, setProblemProgressFilter] = useState<ProgressFilter>('all');
   const [allWordsProgressFilter, setAllWordsProgressFilter] = useState<ProgressFilter>('all');
   const [riskWords, setRiskWords] = useState<Word[]>([]);
+  const [activeSessionSnapshot, setActiveSessionSnapshot] = useState<FlashcardSessionSnapshot | null>(null);
 
   // Flashcard session state
   const [shuffledWords, setShuffledWords] = useState<Word[]>([]);
@@ -205,6 +215,13 @@ export default function Flashcards() {
   const [isSentenceMuted, setIsSentenceMuted] = useState(true);
   const lastSpokenWordRef = useRef<string | null>(null);
   const lastSpokenSentenceRef = useRef<string | null>(null);
+
+  const persistActiveSession = useCallback((session: FlashcardSessionSnapshot | null) => {
+    setActiveSessionSnapshot(session);
+    void saveFlashcardsActiveSession(session).catch(() => {
+      // ignore network issues
+    });
+  }, []);
 
   useEffect(() => {
     loadWords();
@@ -245,7 +262,7 @@ export default function Flashcards() {
     setSessionProblemCount(0);
     setSessionStarted(true);
     setIsRiskReminderSession(true);
-    saveSession({
+    persistActiveSession({
       wordIds: sessionWords.map((w) => w.id),
       currentIndex: 0,
       filterType: 'risk',
@@ -254,12 +271,12 @@ export default function Flashcards() {
       knownCount: 0,
       problemCount: 0,
     });
-  }, [location.state, words, sessionStarted, navigate]);
+  }, [location.state, words, sessionStarted, navigate, persistActiveSession]);
 
   // When a risk-reminder session is completed, mark so we don't show reminder again today
   useEffect(() => {
     if (sessionComplete && isRiskReminderSession) {
-      setRiskSessionCompletedToday();
+      void setRiskSessionCompletedToday();
       setIsRiskReminderSession(false);
     }
   }, [sessionComplete, isRiskReminderSession]);
@@ -294,8 +311,42 @@ export default function Flashcards() {
   }, [streak, previousReviewsToday]);
 
   useEffect(() => {
-    saveSessionSize(sessionSize);
-  }, [sessionSize]);
+    let cancelled = false;
+    getFlashcardsSessionSize()
+      .then((savedSize) => {
+        if (cancelled) return;
+        if (typeof savedSize === 'number' && Number.isFinite(savedSize) && savedSize >= 1) {
+          setSessionSize(Math.floor(savedSize));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSessionSizeLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionSizeLoaded) return;
+    void saveFlashcardsSessionSize(sessionSize).catch(() => {
+      // ignore network issues
+    });
+  }, [sessionSize, sessionSizeLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getFlashcardsActiveSession()
+      .then((saved) => {
+        if (!cancelled) setActiveSessionSnapshot(saved);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveSessionSnapshot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Reset progress filters when switching away from their respective filters
   useEffect(() => {
@@ -413,7 +464,7 @@ export default function Flashcards() {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
         setIsFlipped(false);
-        saveSession({
+        persistActiveSession({
           wordIds: shuffledWords.map(w => w.id),
           currentIndex: nextIndex,
           filterType,
@@ -433,7 +484,9 @@ export default function Flashcards() {
           knownCount: counts?.knownCount ?? 0,
           problemCount: counts?.problemCount ?? 0,
         };
-        saveLastCompletedSession(completedSession);
+        void saveFlashcardsLastCompletedSession(completedSession).catch(() => {
+          // ignore network failures
+        });
         setLastCompletedSession({
           words: shuffledWords,
           filterType,
@@ -444,10 +497,10 @@ export default function Flashcards() {
           totalWords: shuffledWords.length,
         });
         setSessionComplete(true);
-        clearSavedSession();
+        persistActiveSession(null);
       }
     },
-    [currentIndex, shuffledWords, filterType, dateRange, setLastCompletedSession]
+    [currentIndex, shuffledWords, filterType, dateRange, setLastCompletedSession, persistActiveSession]
   );
 
   const handleKnow = async () => {
@@ -528,7 +581,7 @@ export default function Flashcards() {
       setSessionKnownCount(0);
       setSessionProblemCount(0);
       setSessionStarted(true);
-      saveSession({
+      persistActiveSession({
         wordIds: shuffled.map(w => w.id),
         currentIndex: 0,
         filterType,
@@ -565,7 +618,7 @@ export default function Flashcards() {
     setSessionProblemCount(0);
     setSessionStarted(true);
     // Save as new session (with shuffled order)
-    saveSession({
+    persistActiveSession({
       wordIds: shuffled.map(w => w.id),
       currentIndex: 0,
       filterType,
@@ -608,7 +661,7 @@ export default function Flashcards() {
 
   // Validated saved session for "Continue last session" (only when on options screen)
   const resumableSession = useMemo(() => {
-    const saved = getSavedSession();
+    const saved = activeSessionSnapshot;
     if (!saved || !saved.wordIds.length) return null;
     const wordMap = new Map(words.map(w => [w.id, w]));
     const ordered = saved.wordIds.map(id => wordMap.get(id)).filter(Boolean) as Word[];
@@ -622,30 +675,42 @@ export default function Flashcards() {
       knownCount: saved.knownCount,
       problemCount: saved.problemCount,
     };
-  }, [words]);
+  }, [words, activeSessionSnapshot]);
 
   // Load last completed session for display and regeneration
   useEffect(() => {
-    const saved = getLastCompletedSession();
-    if (!saved || !saved.wordIds.length) {
-      setLastCompletedSession(null);
-      return;
-    }
-    const wordMap = new Map(words.map(w => [w.id, w]));
-    const ordered = saved.wordIds.map(id => wordMap.get(id)).filter(Boolean) as Word[];
-    if (ordered.length === 0) {
-      setLastCompletedSession(null);
-      return;
-    }
-    setLastCompletedSession({
-      words: ordered,
-      filterType: saved.filterType,
-      dateRange: saved.dateRange,
-      savedAt: saved.savedAt,
-      knownCount: saved.knownCount,
-      problemCount: saved.problemCount,
-      totalWords: saved.wordIds.length,
-    });
+    let cancelled = false;
+    const loadLastCompletedSession = async () => {
+      const saved = await getFlashcardsLastCompletedSession().catch(() => null);
+      if (!saved || !saved.wordIds.length) {
+        if (!cancelled) setLastCompletedSession(null);
+        return;
+      }
+
+      const wordMap = new Map(words.map(w => [w.id, w]));
+      const ordered = saved.wordIds.map(id => wordMap.get(id)).filter(Boolean) as Word[];
+      if (ordered.length === 0) {
+        if (!cancelled) setLastCompletedSession(null);
+        return;
+      }
+
+      if (!cancelled) {
+        setLastCompletedSession({
+          words: ordered,
+          filterType: saved.filterType,
+          dateRange: saved.dateRange,
+          savedAt: saved.savedAt,
+          knownCount: saved.knownCount,
+          problemCount: saved.problemCount,
+          totalWords: saved.wordIds.length,
+        });
+      }
+    };
+
+    void loadLastCompletedSession();
+    return () => {
+      cancelled = true;
+    };
   }, [words]);
 
   const continueLastSession = () => {
@@ -678,7 +743,7 @@ export default function Flashcards() {
     setSessionProblemCount(0);
     setSessionStarted(true);
     // Save as new session (with shuffled order)
-    saveSession({
+    persistActiveSession({
       wordIds: shuffled.map(w => w.id),
       currentIndex: 0,
       filterType: lastCompletedSession.filterType,

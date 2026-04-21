@@ -30,8 +30,6 @@ interface WindowWithSpeech {
 }
 const SpeechRecognitionAPI = typeof window !== 'undefined' && ((window as unknown as WindowWithSpeech).SpeechRecognition || (window as unknown as WindowWithSpeech).webkitSpeechRecognition);
 
-const TEST_SESSION_STORAGE_KEY = 'myvocab-test-session';
-
 interface Scenario {
   scenarioId: string;
   description: string;
@@ -145,11 +143,6 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
 
   // When user leaves the test (Back), clear any saved state so next time they start from the beginning
   const handleBack = useCallback(() => {
-    try {
-      localStorage.removeItem(TEST_SESSION_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
     onBack();
   }, [onBack]);
 
@@ -597,11 +590,6 @@ export default function TestSession({ words, onBack, initialTestType }: TestSess
     setCurrentScenarioIndex(0);
     setActiveTestType(null);
     setShowTestTypePicker(true);
-    try {
-      localStorage.removeItem(TEST_SESSION_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
   }, []);
 
   // Auto-start test type if initialTestType is provided (except scenario: user picks words per scenario first)

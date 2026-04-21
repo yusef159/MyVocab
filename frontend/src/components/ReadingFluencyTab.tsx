@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
+import { getReadingFluencyState, saveReadingFluencyState } from '../db';
 import type {
   ReadingArticle,
   ReadingArticleLength,
   ReadingFluencyEvaluation,
 } from '../types';
 import { ReadingFluencyArticleBody } from './ReadingFluencyArticleBody';
-
-const READING_FLUENCY_STATE_KEY = 'myvocab-reading-fluency-state';
 
 interface PersistedReadingFluencyState {
   article: ReadingArticle | null;
@@ -33,6 +32,7 @@ export default function ReadingFluencyTab() {
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const [articleLength, setArticleLength] = useState<ReadingArticleLength>('medium');
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -65,42 +65,48 @@ export default function ReadingFluencyTab() {
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(READING_FLUENCY_STATE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as PersistedReadingFluencyState;
-      if (parsed.article) setArticle(parsed.article);
-      if (Array.isArray(parsed.expectedWords)) setExpectedWords(parsed.expectedWords);
-      if (parsed.evaluation) setEvaluation(parsed.evaluation);
-      if (
-        parsed.articleLength === 'short' ||
-        parsed.articleLength === 'medium' ||
-        parsed.articleLength === 'large'
-      ) {
-        setArticleLength(parsed.articleLength);
-      }
-      if (typeof parsed.recordingSeconds === 'number') {
-        setRecordingSeconds(parsed.recordingSeconds);
-      }
-    } catch {
-      // ignore corrupted saved state
-    }
+    let cancelled = false;
+    getReadingFluencyState<PersistedReadingFluencyState>()
+      .then((parsed) => {
+        if (!parsed || cancelled) return;
+        if (parsed.article) setArticle(parsed.article);
+        if (Array.isArray(parsed.expectedWords)) setExpectedWords(parsed.expectedWords);
+        if (parsed.evaluation) setEvaluation(parsed.evaluation);
+        if (
+          parsed.articleLength === 'short' ||
+          parsed.articleLength === 'medium' ||
+          parsed.articleLength === 'large'
+        ) {
+          setArticleLength(parsed.articleLength);
+        }
+        if (typeof parsed.recordingSeconds === 'number') {
+          setRecordingSeconds(parsed.recordingSeconds);
+        }
+      })
+      .catch(() => {
+        // ignore fetch issues
+      })
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    try {
-      const payload: PersistedReadingFluencyState = {
-        article,
-        expectedWords,
-        evaluation,
-        recordingSeconds,
-        articleLength,
-      };
-      localStorage.setItem(READING_FLUENCY_STATE_KEY, JSON.stringify(payload));
-    } catch {
-      // ignore storage issues
-    }
-  }, [article, expectedWords, evaluation, recordingSeconds, articleLength]);
+    if (!hydrated) return;
+    const payload: PersistedReadingFluencyState = {
+      article,
+      expectedWords,
+      evaluation,
+      recordingSeconds,
+      articleLength,
+    };
+    void saveReadingFluencyState(payload).catch(() => {
+      // ignore network issues
+    });
+  }, [article, expectedWords, evaluation, recordingSeconds, articleLength, hydrated]);
 
   const handleGenerateArticle = async () => {
     setError(null);
