@@ -220,6 +220,9 @@ export default function Flashcards() {
   const touchEndXRef = useRef(0);
   const touchEndYRef = useRef(0);
   const swipeHandledRef = useRef(false);
+  const swipeTimeoutRef = useRef<number | null>(null);
+  const [swipeOffsetX, setSwipeOffsetX] = useState(0);
+  const [isSwipeSettling, setIsSwipeSettling] = useState(false);
 
   const persistActiveSession = useCallback((session: FlashcardSessionSnapshot | null) => {
     setActiveSessionSnapshot(session);
@@ -464,6 +467,7 @@ export default function Flashcards() {
   };
 
   const handleCardTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isSwipeSettling) return;
     const touch = e.touches[0];
     if (!touch) return;
     touchStartXRef.current = touch.clientX;
@@ -471,13 +475,18 @@ export default function Flashcards() {
     touchEndXRef.current = touch.clientX;
     touchEndYRef.current = touch.clientY;
     swipeHandledRef.current = false;
+    setIsSwipeSettling(false);
   };
 
   const handleCardTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isSwipeSettling) return;
     const touch = e.touches[0];
     if (!touch) return;
     touchEndXRef.current = touch.clientX;
     touchEndYRef.current = touch.clientY;
+    const deltaX = touch.clientX - touchStartXRef.current;
+    const clampedOffset = Math.max(-160, Math.min(160, deltaX));
+    setSwipeOffsetX(clampedOffset);
   };
 
   const moveToNext = useCallback(
@@ -546,6 +555,7 @@ export default function Flashcards() {
   };
 
   const handleCardTouchEnd = () => {
+    if (isSwipeSettling) return;
     const deltaX = touchEndXRef.current - touchStartXRef.current;
     const deltaY = touchEndYRef.current - touchStartYRef.current;
     const absX = Math.abs(deltaX);
@@ -554,24 +564,63 @@ export default function Flashcards() {
     const maxVerticalDrift = 80;
 
     if (absX < swipeThreshold || absY > maxVerticalDrift || absX <= absY) {
+      setIsSwipeSettling(true);
+      setSwipeOffsetX(0);
+      if (swipeTimeoutRef.current !== null) {
+        window.clearTimeout(swipeTimeoutRef.current);
+      }
+      swipeTimeoutRef.current = window.setTimeout(() => {
+        setIsSwipeSettling(false);
+      }, 180);
       return;
     }
 
     swipeHandledRef.current = true;
-    if (deltaX > 0) {
-      void handleKnow();
-      return;
+    setIsSwipeSettling(true);
+    setSwipeOffsetX(deltaX > 0 ? 220 : -220);
+    if (swipeTimeoutRef.current !== null) {
+      window.clearTimeout(swipeTimeoutRef.current);
     }
-    void handleDontKnow();
+    swipeTimeoutRef.current = window.setTimeout(() => {
+      setSwipeOffsetX(0);
+      setIsSwipeSettling(false);
+      if (deltaX > 0) {
+        void handleKnow();
+        return;
+      }
+      void handleDontKnow();
+    }, 170);
   };
 
   const handleCardClick = () => {
+    if (isSwipeSettling) return;
     if (swipeHandledRef.current) {
       swipeHandledRef.current = false;
       return;
     }
     handleFlip();
   };
+
+  useEffect(() => {
+    setSwipeOffsetX(0);
+    setIsSwipeSettling(false);
+    swipeHandledRef.current = false;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (swipeTimeoutRef.current !== null) {
+        window.clearTimeout(swipeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const swipeStrength = Math.min(1, Math.abs(swipeOffsetX) / 120);
+  const swipeTilt = Math.max(-9, Math.min(9, swipeOffsetX * 0.05));
+  const dontKnowOpacity = swipeOffsetX < 0 ? swipeStrength : 0;
+  const knowOpacity = swipeOffsetX > 0 ? swipeStrength : 0;
+  const swipeTransform = `translateX(${swipeOffsetX}px) rotate(${swipeTilt}deg)`;
+  const swipeTransition = isSwipeSettling ? 'transform 180ms ease-out' : 'none';
 
   // Keyboard shortcuts during session (always active)
   useEffect(() => {
@@ -1638,15 +1687,36 @@ export default function Flashcards() {
         style={{ touchAction: 'pan-y' }}
       >
         <div
-          key={currentIndex}
-          className={`absolute inset-0 transition-transform duration-500 transform-style-preserve-3d ${
-            isFlipped ? 'rotate-y-180' : ''
-          }`}
+          className="absolute left-5 top-5 z-10 pointer-events-none rounded-full border border-red-400/60 bg-red-500/20 px-3 py-1 text-red-200 text-sm font-semibold"
           style={{
-            transformStyle: 'preserve-3d',
-            transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            opacity: dontKnowOpacity,
+            transform: `scale(${0.92 + dontKnowOpacity * 0.08})`,
+            transition: 'opacity 120ms ease-out, transform 120ms ease-out',
           }}
         >
+          I don't know
+        </div>
+        <div
+          className="absolute right-5 top-5 z-10 pointer-events-none rounded-full border border-emerald-400/60 bg-emerald-500/20 px-3 py-1 text-emerald-200 text-sm font-semibold"
+          style={{
+            opacity: knowOpacity,
+            transform: `scale(${0.92 + knowOpacity * 0.08})`,
+            transition: 'opacity 120ms ease-out, transform 120ms ease-out',
+          }}
+        >
+          I know
+        </div>
+        <div className="absolute inset-0" style={{ transform: swipeTransform, transition: swipeTransition }}>
+          <div
+            key={currentIndex}
+            className={`absolute inset-0 transition-transform duration-500 transform-style-preserve-3d ${
+              isFlipped ? 'rotate-y-180' : ''
+            }`}
+            style={{
+              transformStyle: 'preserve-3d',
+              transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            }}
+          >
           {/* Front */}
           <div
             className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 flex items-center justify-center backface-hidden"
@@ -1739,6 +1809,7 @@ export default function Flashcards() {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Keyboard shortcut hint (always available) */}
