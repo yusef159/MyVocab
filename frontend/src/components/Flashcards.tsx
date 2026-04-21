@@ -215,6 +215,11 @@ export default function Flashcards() {
   const [isSentenceMuted, setIsSentenceMuted] = useState(true);
   const lastSpokenWordRef = useRef<string | null>(null);
   const lastSpokenSentenceRef = useRef<string | null>(null);
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const touchEndXRef = useRef(0);
+  const touchEndYRef = useRef(0);
+  const swipeHandledRef = useRef(false);
 
   const persistActiveSession = useCallback((session: FlashcardSessionSnapshot | null) => {
     setActiveSessionSnapshot(session);
@@ -458,6 +463,23 @@ export default function Flashcards() {
     setIsFlipped(!isFlipped);
   };
 
+  const handleCardTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    touchEndXRef.current = touch.clientX;
+    touchEndYRef.current = touch.clientY;
+    swipeHandledRef.current = false;
+  };
+
+  const handleCardTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchEndXRef.current = touch.clientX;
+    touchEndYRef.current = touch.clientY;
+  };
+
   const moveToNext = useCallback(
     (counts?: { knownCount: number; problemCount: number }) => {
       if (currentIndex < shuffledWords.length - 1) {
@@ -521,6 +543,34 @@ export default function Flashcards() {
       await loadStreak(); // Reload streak to check if we hit 20 reviews
       moveToNext({ knownCount: sessionKnownCount, problemCount: nextProblem });
     }
+  };
+
+  const handleCardTouchEnd = () => {
+    const deltaX = touchEndXRef.current - touchStartXRef.current;
+    const deltaY = touchEndYRef.current - touchStartYRef.current;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+    const swipeThreshold = 70;
+    const maxVerticalDrift = 80;
+
+    if (absX < swipeThreshold || absY > maxVerticalDrift || absX <= absY) {
+      return;
+    }
+
+    swipeHandledRef.current = true;
+    if (deltaX > 0) {
+      void handleKnow();
+      return;
+    }
+    void handleDontKnow();
+  };
+
+  const handleCardClick = () => {
+    if (swipeHandledRef.current) {
+      swipeHandledRef.current = false;
+      return;
+    }
+    handleFlip();
   };
 
   // Keyboard shortcuts during session (always active)
@@ -1580,8 +1630,12 @@ export default function Flashcards() {
 
       {/* Flashcard: key so next word appears immediately (no flip animation on advance); flip animation only when revealing this card */}
       <div
-        onClick={handleFlip}
+        onClick={handleCardClick}
+        onTouchStart={handleCardTouchStart}
+        onTouchMove={handleCardTouchMove}
+        onTouchEnd={handleCardTouchEnd}
         className="relative h-[22rem] sm:h-80 cursor-pointer perspective-1000"
+        style={{ touchAction: 'pan-y' }}
       >
         <div
           key={currentIndex}
@@ -1690,6 +1744,7 @@ export default function Flashcards() {
       {/* Keyboard shortcut hint (always available) */}
       <p className="text-center text-gray-500 text-sm">
         Shortcuts: ← I don't know · → I know · ↓ Flip card · Space Play sentence
+        <span className="block text-xs text-gray-600 mt-1">On phone/tablet: swipe left for "I don't know" or swipe right for "I know".</span>
       </p>
 
       {/* Action Buttons */}
