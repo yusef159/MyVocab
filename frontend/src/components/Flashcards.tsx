@@ -564,14 +564,8 @@ export default function Flashcards() {
     const maxVerticalDrift = 80;
 
     if (absX < swipeThreshold || absY > maxVerticalDrift || absX <= absY) {
-      setIsSwipeSettling(true);
+      // Not a committed swipe: keep tap-to-flip behavior working on touch devices.
       setSwipeOffsetX(0);
-      if (swipeTimeoutRef.current !== null) {
-        window.clearTimeout(swipeTimeoutRef.current);
-      }
-      swipeTimeoutRef.current = window.setTimeout(() => {
-        setIsSwipeSettling(false);
-      }, 180);
       return;
     }
 
