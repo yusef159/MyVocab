@@ -770,12 +770,14 @@ export default function WordList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
   const [showLearningFilter, setShowLearningFilter] = useState(false);
+  const [showDataMenu, setShowDataMenu] = useState(false);
   const [learningMin, setLearningMin] = useState(0);
   const [learningMax, setLearningMax] = useState(100);
   const [wordToDelete, setWordToDelete] = useState<Word | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
+  const dataMenuRef = useRef<HTMLDivElement>(null);
 
   const handleDelete = async (word: Word) => {
     await removeWord(word.id);
@@ -943,6 +945,28 @@ export default function WordList() {
     loadWords();
   }, [loadWords]);
 
+  useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!dataMenuRef.current) return;
+      if (!dataMenuRef.current.contains(event.target as Node)) {
+        setShowDataMenu(false);
+      }
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowDataMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onDocumentClick);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onDocumentClick);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, []);
+
   const filteredWords = words.filter((word) => {
     const matchesSearch = 
       word.english.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -966,75 +990,139 @@ export default function WordList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
-        
-        {/* Import/Export Buttons */}
-        <div className="flex gap-2 flex-wrap">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImport}
-            accept=".xlsx,.xls"
-            className="hidden"
-          />
-          <input
-            type="file"
-            ref={backupFileInputRef}
-            onChange={handleBackupImport}
-            accept=".json"
-            className="hidden"
-          />
+
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImport}
+          accept=".xlsx,.xls"
+          className="hidden"
+        />
+        <input
+          type="file"
+          ref={backupFileInputRef}
+          onChange={handleBackupImport}
+          accept=".json"
+          className="hidden"
+        />
+
+        <div className="relative" ref={dataMenuRef}>
           <button
-            onClick={handleMigrateLegacyData}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-500 transition-colors"
-            title="Migrate legacy browser IndexedDB data to server"
+            type="button"
+            onClick={() => setShowDataMenu((prev) => !prev)}
+            aria-expanded={showDataMenu}
+            aria-controls="my-words-data-menu"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700"
+            title="Open import/export tools"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            <span className="sr-only">Open data tools menu</span>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
             </svg>
-            Migrate Local Data
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
-            title="Import from Excel"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            <span className="hidden sm:inline">Data</span>
+            <svg
+              className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showDataMenu ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-            Import
           </button>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors"
-            title="Export to Excel"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export
-          </button>
-          <button
-            onClick={handleBackupExport}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-500 transition-colors"
-            title="Export complete backup JSON (words, reviews, streak, grammar)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7l1 13h12l1-13M10 11v6m4-6v6M9 7V4h6v3" />
-            </svg>
-            Backup JSON
-          </button>
-          <button
-            onClick={() => backupFileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors"
-            title="Import complete backup JSON"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Restore JSON
-          </button>
+
+          {showDataMenu && (
+            <div
+              id="my-words-data-menu"
+              className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-700 bg-gray-800/95 p-2 shadow-2xl backdrop-blur"
+            >
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Excel</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDataMenu(false);
+                  fileInputRef.current?.click();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                title="Import from Excel"
+              >
+                <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
+                </svg>
+                Import from Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDataMenu(false);
+                  handleExport();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                title="Export to Excel"
+              >
+                <svg className="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export to Excel
+              </button>
+
+              <div className="my-1 border-t border-gray-700" />
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Backup JSON</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDataMenu(false);
+                  handleBackupExport();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                title="Export complete backup JSON (words, reviews, streak, grammar)"
+              >
+                <svg className="h-4 w-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7l1 13h12l1-13M10 11v6m4-6v6M9 7V4h6v3" />
+                </svg>
+                Export backup JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDataMenu(false);
+                  backupFileInputRef.current?.click();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                title="Import complete backup JSON"
+              >
+                <svg className="h-4 w-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Restore backup JSON
+              </button>
+
+              <div className="my-1 border-t border-gray-700" />
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Migration</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDataMenu(false);
+                  void handleMigrateLegacyData();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                title="Migrate legacy browser IndexedDB data to server"
+              >
+                <svg className="h-4 w-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Migrate local data
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

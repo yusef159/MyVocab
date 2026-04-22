@@ -957,7 +957,7 @@ export default function Flashcards() {
                 </div>
               </div>
               
-              <div className="ml-11 mb-4 space-y-3 text-sm text-gray-300">
+              <div className="mb-4 space-y-3 text-sm text-gray-300">
                 <p>
                   <span className="text-gray-400">Filter:</span> {getFilterTypeLabel(lastCompletedSession.filterType)}
                   {lastCompletedSession.filterType === 'date' && ` (${getDateRangeLabel(lastCompletedSession.dateRange)})`}
