@@ -39,7 +39,7 @@ function App() {
                 }`
               }
             >
-              Home
+              Dashboard
             </NavLink>
             <NavLink
               to="/generate"
