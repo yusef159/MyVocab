@@ -33,7 +33,7 @@ jobs:
           key: ${{ secrets.PI_SSH_KEY }}
           port: 22
           script: |
-            cd ~/apps/myvocab
+            cd ~/apps/myVocab
             git pull origin main
             docker compose down
             docker compose up -d --build
