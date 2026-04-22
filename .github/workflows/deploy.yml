@@ -1,16 +1,16 @@
-```yaml
 name: Deploy to Pi
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Tailscale
@@ -21,9 +21,8 @@ jobs:
         run: |
           sudo tailscale up --authkey=${{ secrets.TS_AUTH_KEY }}
 
-      - name: Debug Tailscale Connection
+      - name: Verify Pi Reachability
         run: |
-          tailscale status
           ping -c 4 ${{ secrets.PI_HOST }}
 
       - name: Deploy over SSH
@@ -32,12 +31,11 @@ jobs:
           host: ${{ secrets.PI_HOST }}
           username: ${{ secrets.PI_USER }}
           key: ${{ secrets.PI_SSH_KEY }}
-          port: ${{ secrets.PI_PORT || 22 }}
+          port: 22
           script: |
-            set -e
             cd ~/apps/myvocab
             git pull origin main
+            docker compose down
             docker compose up -d --build
             docker image prune -f
             docker compose ps
-```
