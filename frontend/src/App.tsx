@@ -42,6 +42,30 @@ function App() {
               Home
             </NavLink>
             <NavLink
+              to="/words"
+              className={({ isActive }) =>
+                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                  isActive
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+            >
+              My Words
+            </NavLink>
+            <NavLink
+              to="/flashcards"
+              className={({ isActive }) =>
+                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                  isActive
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+            >
+              Flashcards
+            </NavLink>
+            <NavLink
               to="/generate"
               className={({ isActive }) =>
                 `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
@@ -66,18 +90,6 @@ function App() {
               Manual Input
             </NavLink>
             <NavLink
-              to="/words"
-              className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
-                  isActive
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
-                }`
-              }
-            >
-              My Words
-            </NavLink>
-            <NavLink
               to="/test"
               className={({ isActive }) =>
                 `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
@@ -100,18 +112,6 @@ function App() {
               }
             >
               Grammar
-            </NavLink>
-            <NavLink
-              to="/flashcards"
-              className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
-                  isActive
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
-                }`
-              }
-            >
-              Flashcards
             </NavLink>
             <NavLink
               to="/reading"
