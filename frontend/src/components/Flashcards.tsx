@@ -223,6 +223,7 @@ export default function Flashcards() {
   const swipeTimeoutRef = useRef<number | null>(null);
   const [swipeOffsetX, setSwipeOffsetX] = useState(0);
   const [isSwipeSettling, setIsSwipeSettling] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const persistActiveSession = useCallback((session: FlashcardSessionSnapshot | null) => {
     setActiveSessionSnapshot(session);
@@ -534,23 +535,23 @@ export default function Flashcards() {
     [currentIndex, shuffledWords, filterType, dateRange, setLastCompletedSession, persistActiveSession]
   );
 
-  const handleKnow = async () => {
+  const handleKnow = () => {
     if (currentWord) {
+      const reviewedWordId = currentWord.id;
       const nextKnown = sessionKnownCount + 1;
       setSessionKnownCount(nextKnown);
-      await markAsKnown(currentWord.id);
-      await loadStreak(); // Reload streak to check if we hit 20 reviews
       moveToNext({ knownCount: nextKnown, problemCount: sessionProblemCount });
+      void markAsKnown(reviewedWordId);
     }
   };
 
-  const handleDontKnow = async () => {
+  const handleDontKnow = () => {
     if (currentWord) {
+      const reviewedWordId = currentWord.id;
       const nextProblem = sessionProblemCount + 1;
       setSessionProblemCount(nextProblem);
-      await markAsProblem(currentWord.id);
-      await loadStreak(); // Reload streak to check if we hit 20 reviews
       moveToNext({ knownCount: sessionKnownCount, problemCount: nextProblem });
+      void markAsProblem(reviewedWordId);
     }
   };
 
@@ -695,6 +696,7 @@ export default function Flashcards() {
     setSessionProblemCount(0);
     lastSpokenWordRef.current = null;
     lastSpokenSentenceRef.current = null;
+    setShowInstructions(false);
   };
 
   const regenerateCurrentSession = () => {
@@ -1617,6 +1619,27 @@ export default function Flashcards() {
           >
             Change Options
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowInstructions((prev) => !prev)}
+              className="w-9 h-9 rounded-full border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 hover:bg-gray-700 transition-colors"
+              aria-label="Show controls help"
+              title="Show controls help"
+            >
+              i
+            </button>
+            {showInstructions && (
+              <div className="absolute right-0 mt-2 z-20 w-80 max-w-[85vw] rounded-xl border border-gray-600 bg-gray-800/95 shadow-lg p-3 text-sm text-gray-200">
+                <p className="text-gray-300">
+                  Shortcuts: ← I don't know · → I know · ↓ Flip card · Space Play sentence
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  On phone/tablet: swipe left for "I don't know" or swipe right for "I know".
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1805,12 +1828,6 @@ export default function Flashcards() {
         </div>
       </div>
       </div>
-
-      {/* Keyboard shortcut hint (always available) */}
-      <p className="text-center text-gray-500 text-sm">
-        Shortcuts: ← I don't know · → I know · ↓ Flip card · Space Play sentence
-        <span className="block text-xs text-gray-600 mt-1">On phone/tablet: swipe left for "I don't know" or swipe right for "I know".</span>
-      </p>
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">

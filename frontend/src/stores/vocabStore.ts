@@ -31,6 +31,89 @@ import {
 const API_URL = '';
 const MAX_READING_ARTICLE_WORDS = 120;
 
+function applyLocalReviewUpdate(
+  state: Pick<VocabState, 'words' | 'stats' | 'streak'>,
+  id: string,
+  result: 'known' | 'problem'
+): Pick<VocabState, 'words' | 'stats' | 'streak'> {
+  let didUpdate = false;
+  const now = new Date();
+  const nextWords = state.words.map((word) => {
+    if (word.id !== id) return word;
+    didUpdate = true;
+
+    if (result === 'problem') {
+      return {
+        ...word,
+        wrongCount: word.wrongCount + 1,
+        status: 'problem' as const,
+        streak: 0,
+        lastReviewedAt: now,
+      };
+    }
+
+    const nextCorrect = word.correctCount + 1;
+    let nextStatus: Word['status'];
+    let nextStreak: number;
+
+    if (word.status === 'new') {
+      nextStatus = 'known';
+      nextStreak = 0;
+    } else if (word.status === 'problem') {
+      nextStreak = word.streak + 1;
+      if (nextStreak >= 3) {
+        nextStatus = 'known';
+        nextStreak = 0;
+      } else {
+        nextStatus = 'problem';
+      }
+    } else {
+      nextStatus = 'known';
+      nextStreak = 0;
+    }
+
+    return {
+      ...word,
+      correctCount: nextCorrect,
+      status: nextStatus,
+      streak: nextStreak,
+      lastReviewedAt: now,
+    };
+  });
+
+  if (!didUpdate) {
+    return state;
+  }
+
+  const previousWord = state.words.find((word) => word.id === id);
+  const currentWord = nextWords.find((word) => word.id === id);
+  const nextStats = { ...state.stats };
+
+  if (previousWord && currentWord && previousWord.status !== currentWord.status) {
+    const prevStatusKey = previousWord.status as 'new' | 'known' | 'problem';
+    const nextStatusKey = currentWord.status as 'new' | 'known' | 'problem';
+    nextStats[prevStatusKey] = Math.max(0, nextStats[prevStatusKey] - 1);
+    nextStats[nextStatusKey] += 1;
+  }
+
+  let nextStreak = state.streak;
+  if (state.streak) {
+    const today = now.toISOString().slice(0, 10);
+    const isSameDay = state.streak.reviewsDate === today;
+    nextStreak = {
+      ...state.streak,
+      reviewsDate: today,
+      reviewsToday: (isSameDay ? state.streak.reviewsToday : 0) + 1,
+    };
+  }
+
+  return {
+    words: nextWords,
+    stats: nextStats,
+    streak: nextStreak,
+  };
+}
+
 interface VocabState {
   // Words
   words: Word[];
@@ -230,25 +313,33 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   },
 
   markAsKnown: async (id) => {
+    set((state) => ({
+      ...applyLocalReviewUpdate(state, id, 'known'),
+      error: null,
+    }));
+
     try {
       await incrementCorrectCount(id);
-      await updateStreak();
-      await get().loadWords();
-      await get().loadStats();
-      await get().loadStreak();
+      const streak = await updateStreak();
+      set({ streak, error: null });
     } catch (error) {
+      await Promise.allSettled([get().loadWords(), get().loadStats(), get().loadStreak()]);
       set({ error: 'Failed to update word' });
     }
   },
 
   markAsProblem: async (id) => {
+    set((state) => ({
+      ...applyLocalReviewUpdate(state, id, 'problem'),
+      error: null,
+    }));
+
     try {
       await incrementWrongCount(id);
-      await updateStreak();
-      await get().loadWords();
-      await get().loadStats();
-      await get().loadStreak();
+      const streak = await updateStreak();
+      set({ streak, error: null });
     } catch (error) {
+      await Promise.allSettled([get().loadWords(), get().loadStats(), get().loadStreak()]);
       set({ error: 'Failed to update word' });
     }
   },
