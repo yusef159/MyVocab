@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
-import { generateWordsPrompt, suggestMeaningsPrompt, type WordLevel } from '../prompts/wordGeneration.js';
+import {
+  autoScheduleWordsPrompt,
+  generateWordsPrompt,
+  suggestMeaningsPrompt,
+  type WordLevel,
+} from '../prompts/wordGeneration.js';
 
 let openaiClient: OpenAI | null = null;
 
@@ -21,12 +26,32 @@ export interface WordSuggestion {
   exampleSentences: string[];
 }
 
+function parseWordSuggestions(content: string): WordSuggestion[] {
+  const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const parsed = JSON.parse(raw);
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return arr as WordSuggestion[];
+}
+
 export async function generateWords(
   count: number,
   topic?: string,
   level?: WordLevel
 ): Promise<WordSuggestion[]> {
   const prompt = generateWordsPrompt(count, topic, level ?? 'B2');
+  return generateWordsByPrompt(prompt, 2000);
+}
+
+export async function generateAutoScheduledWords(
+  count: number,
+  userPrompt: string,
+  excludedWords: string[] = []
+): Promise<WordSuggestion[]> {
+  const prompt = autoScheduleWordsPrompt(count, userPrompt, excludedWords);
+  return generateWordsByPrompt(prompt, 2500);
+}
+
+async function generateWordsByPrompt(prompt: string, maxTokens: number): Promise<WordSuggestion[]> {
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
@@ -38,7 +63,7 @@ export async function generateWords(
       },
     ],
     temperature: 0.7,
-    max_tokens: 2000,
+    max_tokens: maxTokens,
   });
 
   const content = response.choices[0]?.message?.content;
@@ -47,10 +72,7 @@ export async function generateWords(
   }
 
   try {
-    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(raw);
-    const arr = Array.isArray(parsed) ? parsed : [parsed];
-    return arr as WordSuggestion[];
+    return parseWordSuggestions(content);
   } catch (error) {
     console.error('Failed to parse OpenAI response:', content);
     throw new Error('Failed to parse AI response');
@@ -79,9 +101,11 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
   }
 
   try {
-    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(raw);
-    return parsed as WordSuggestion;
+    const suggestions = parseWordSuggestions(content);
+    if (!suggestions[0]) {
+      throw new Error('No suggestion found');
+    }
+    return suggestions[0];
   } catch (error) {
     console.error('Failed to parse OpenAI response:', content);
     throw new Error('Failed to parse AI response');

@@ -7,6 +7,8 @@ import { generateContextPrompt } from '../services/contextPrompt.js';
 import { generateScenarios } from '../services/scenarioGeneration.js';
 import { generateReadingArticle } from '../services/readingArticle.js';
 import { evaluateReadingFluency } from '../services/readingFluency.js';
+import { getAutoScheduleConfig, getRecentAutoScheduleRuns } from '../db/index.js';
+import { saveAutoSchedule, toggleAutoSchedule } from '../services/autoWordScheduler.js';
 
 const router = Router();
 
@@ -73,6 +75,21 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+const autoScheduleSchema = z.object({
+  prompt: z.string().min(3).max(500),
+  count: z.number().int().min(1).max(3),
+  cadence: z.enum(['daily', 'weekly', 'monthly']),
+  timezone: z.string().min(1).max(100).default('UTC'),
+  timeOfDay: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  dayOfWeek: z.number().int().min(0).max(6).optional(),
+  dayOfMonth: z.number().int().min(1).max(31).optional(),
+  active: z.boolean().default(true),
+});
+
+const autoScheduleToggleSchema = z.object({
+  active: z.boolean(),
+});
+
 router.post('/generate', async (req, res) => {
   try {
     const validation = generateSchema.safeParse(req.body);
@@ -91,6 +108,65 @@ router.post('/generate', async (req, res) => {
     console.error('Error generating words:', error);
     res.status(500).json({ error: 'Failed to generate words' });
   }
+});
+
+router.get('/auto-schedule', (_req, res) => {
+  const schedule = getAutoScheduleConfig();
+  res.json({ schedule });
+});
+
+router.post('/auto-schedule', (req, res) => {
+  const parsed = autoScheduleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Invalid request',
+      details: parsed.error.errors,
+    });
+  }
+
+  const body = parsed.data;
+  if (body.cadence === 'weekly' && body.dayOfWeek == null) {
+    return res.status(400).json({ error: 'dayOfWeek is required for weekly cadence' });
+  }
+  if (body.cadence === 'monthly' && body.dayOfMonth == null) {
+    return res.status(400).json({ error: 'dayOfMonth is required for monthly cadence' });
+  }
+
+  const schedule = saveAutoSchedule({
+    prompt: body.prompt,
+    count: body.count,
+    cadence: body.cadence,
+    timezone: body.timezone,
+    timeOfDay: body.timeOfDay,
+    dayOfWeek: body.dayOfWeek,
+    dayOfMonth: body.dayOfMonth,
+    active: body.active,
+  });
+
+  res.json({ schedule });
+});
+
+router.post('/auto-schedule/pause', (req, res) => {
+  const parsed = autoScheduleToggleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Invalid request',
+      details: parsed.error.errors,
+    });
+  }
+
+  const schedule = toggleAutoSchedule(parsed.data.active);
+  if (!schedule) {
+    return res.status(404).json({ error: 'No schedule found' });
+  }
+  res.json({ schedule });
+});
+
+router.get('/auto-schedule/runs', (req, res) => {
+  const limitRaw = Number(req.query.limit ?? 20);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.floor(limitRaw))) : 20;
+  const runs = getRecentAutoScheduleRuns(limit);
+  res.json({ runs });
 });
 
 router.post('/suggest', async (req, res) => {

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import axios from 'axios';
 import type {
+  AutoScheduleConfig,
+  AutoScheduleRun,
+  BackupScheduleConfig,
   Word,
   WordSuggestion,
   StreakData,
@@ -11,6 +14,10 @@ import type {
 } from '../types';
 import {
   getAllWords,
+  getAutoScheduleConfig as dbGetAutoScheduleConfig,
+  getAutoScheduleRuns as dbGetAutoScheduleRuns,
+  getBackupScheduleConfig as dbGetBackupScheduleConfig,
+  getStreakDailyGoal as dbGetStreakDailyGoal,
   getWordsByStatus,
   addWord,
   incrementWrongCount,
@@ -25,6 +32,11 @@ import {
   getReviewCountsByDateRange,
   getEarliestReviewDate,
   getWordReviewHistory as dbGetWordReviewHistory,
+  saveAutoScheduleConfig as dbSaveAutoScheduleConfig,
+  saveBackupScheduleConfig as dbSaveBackupScheduleConfig,
+  saveStreakDailyGoal as dbSaveStreakDailyGoal,
+  setAutoScheduleActive as dbSetAutoScheduleActive,
+  setBackupScheduleActive as dbSetBackupScheduleActive,
 } from '../db';
 
 // Use relative URL since frontend is served from the same server as the API
@@ -124,6 +136,10 @@ interface VocabState {
   // Suggestions from AI
   suggestions: WordSuggestion[];
   isSuggestingLoading: boolean;
+  autoSchedule: AutoScheduleConfig | null;
+  autoScheduleRuns: AutoScheduleRun[];
+  backupSchedule: BackupScheduleConfig | null;
+  streakDailyGoal: number;
 
   // Stats
   stats: {
@@ -146,6 +162,32 @@ interface VocabState {
   generateWords: (count: number, topic?: string, level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2') => Promise<void>;
   suggestMeanings: (word: string) => Promise<void>;
   clearSuggestions: () => void;
+  loadAutoSchedule: () => Promise<void>;
+  saveAutoSchedule: (payload: {
+    prompt: string;
+    count: number;
+    cadence: 'daily' | 'weekly' | 'monthly';
+    timezone: string;
+    timeOfDay: string;
+    dayOfWeek?: number;
+    dayOfMonth?: number;
+    active: boolean;
+  }) => Promise<boolean>;
+  setAutoScheduleActive: (active: boolean) => Promise<void>;
+  loadAutoScheduleRuns: (limit?: number) => Promise<void>;
+  loadBackupSchedule: () => Promise<void>;
+  loadStreakDailyGoal: () => Promise<void>;
+  saveStreakDailyGoal: (goal: number) => Promise<boolean>;
+  saveBackupSchedule: (payload: {
+    cadence: 'daily' | 'weekly' | 'monthly';
+    timezone: string;
+    timeOfDay: string;
+    dayOfWeek?: number;
+    dayOfMonth?: number;
+    destinationPath: string;
+    active: boolean;
+  }) => Promise<boolean>;
+  setBackupScheduleActive: (active: boolean) => Promise<void>;
   
   saveWord: (
     english: string,
@@ -202,6 +244,10 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   error: null,
   suggestions: [],
   isSuggestingLoading: false,
+  autoSchedule: null,
+  autoScheduleRuns: [],
+  backupSchedule: null,
+  streakDailyGoal: 20,
   stats: { total: 0, known: 0, problem: 0, new: 0 },
   streak: null,
   reviewCounts: [],
@@ -289,6 +335,103 @@ export const useVocabStore = create<VocabState>((set, get) => ({
 
   clearSuggestions: () => {
     set({ suggestions: [], error: null });
+  },
+
+  loadAutoSchedule: async () => {
+    try {
+      const autoSchedule = await dbGetAutoScheduleConfig();
+      set({ autoSchedule });
+    } catch (error) {
+      console.error('Failed to load auto schedule:', error);
+      set({ error: 'Failed to load auto schedule' });
+    }
+  },
+
+  saveAutoSchedule: async (payload) => {
+    try {
+      const autoSchedule = await dbSaveAutoScheduleConfig(payload);
+      set({ autoSchedule, error: null });
+      await Promise.allSettled([get().loadAutoScheduleRuns(10), get().loadWords(), get().loadStats()]);
+      return true;
+    } catch (error) {
+      console.error('Failed to save auto schedule:', error);
+      set({ error: 'Failed to save auto schedule' });
+      return false;
+    }
+  },
+
+  setAutoScheduleActive: async (active) => {
+    try {
+      const autoSchedule = await dbSetAutoScheduleActive(active);
+      set({ autoSchedule, error: null });
+    } catch (error) {
+      console.error('Failed to update auto schedule state:', error);
+      set({ error: 'Failed to update auto schedule state' });
+    }
+  },
+
+  loadAutoScheduleRuns: async (limit = 20) => {
+    try {
+      const autoScheduleRuns = await dbGetAutoScheduleRuns(limit);
+      set({ autoScheduleRuns });
+    } catch (error) {
+      console.error('Failed to load auto schedule runs:', error);
+      set({ autoScheduleRuns: [] });
+    }
+  },
+
+  loadBackupSchedule: async () => {
+    try {
+      const backupSchedule = await dbGetBackupScheduleConfig();
+      set({ backupSchedule, error: null });
+    } catch (error) {
+      console.error('Failed to load backup schedule:', error);
+      set({ error: 'Failed to load backup schedule' });
+    }
+  },
+
+  loadStreakDailyGoal: async () => {
+    try {
+      const streakDailyGoal = await dbGetStreakDailyGoal();
+      set({ streakDailyGoal, error: null });
+    } catch (error) {
+      console.error('Failed to load streak daily goal:', error);
+      set({ error: 'Failed to load streak daily goal' });
+    }
+  },
+
+  saveStreakDailyGoal: async (goal) => {
+    try {
+      const streakDailyGoal = await dbSaveStreakDailyGoal(goal);
+      set({ streakDailyGoal, error: null });
+      return true;
+    } catch (error) {
+      console.error('Failed to save streak daily goal:', error);
+      set({ error: 'Failed to save streak daily goal' });
+      return false;
+    }
+  },
+
+  saveBackupSchedule: async (payload) => {
+    try {
+      const backupSchedule = await dbSaveBackupScheduleConfig(payload);
+      set({ backupSchedule, error: null });
+      return true;
+    } catch (error) {
+      console.error('Failed to save backup schedule:', error);
+      set({ error: 'Failed to save backup schedule' });
+      return false;
+    }
+  },
+
+  setBackupScheduleActive: async (active) => {
+    try {
+      const backupSchedule = await dbSetBackupScheduleActive(active);
+      set({ backupSchedule, error: null });
+    } catch (error) {
+      console.error('Failed to update backup schedule state:', error);
+      set({ error: 'Failed to update backup schedule state' });
+    }
   },
 
   saveWord: async (english, arabicMeanings, exampleSentences, topic) => {

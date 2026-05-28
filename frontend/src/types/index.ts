@@ -35,7 +35,7 @@ export interface StreakData {
   id: string;
   currentStreak: number;
   longestStreak: number;
-  lastActivityDate: string; // Last day streak was incremented (last day with 20+ reviews)
+  lastActivityDate: string; // Last day streak was incremented (last day that reached the daily goal)
   reviewsToday: number; // Number of word reviews today (can be same word multiple times)
   reviewsDate: string; // The date that reviewsToday belongs to
 }
@@ -44,6 +44,51 @@ export interface WordSuggestion {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+}
+
+export type AutoScheduleCadence = 'daily' | 'weekly' | 'monthly';
+
+export interface AutoScheduleConfig {
+  id: string;
+  prompt: string;
+  count: number;
+  cadence: AutoScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  nextRunAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutoScheduleRun {
+  id: string;
+  scheduleId: string;
+  startedAt: string;
+  finishedAt?: string;
+  generatedCount: number;
+  savedCount: number;
+  skippedExistingCount: number;
+  status: 'running' | 'success' | 'failed';
+  error?: string;
+}
+
+export type BackupScheduleCadence = 'daily' | 'weekly' | 'monthly';
+
+export interface BackupScheduleConfig {
+  id: string;
+  cadence: BackupScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  destinationPath: string;
+  nextRunAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GenerateWordsRequest {

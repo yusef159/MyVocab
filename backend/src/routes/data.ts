@@ -6,6 +6,7 @@ import {
   deleteWord,
   exportFullBackup,
   getAllGrammarProgress,
+  getBackupScheduleConfig,
   getAllWords,
   getAppStateJson,
   getEarliestReviewDate,
@@ -31,6 +32,7 @@ import {
   type AppStateKey,
   type FlashcardSessionSnapshot,
 } from '../db/index.js';
+import { saveBackupSchedule, toggleBackupSchedule } from '../services/autoBackupScheduler.js';
 
 const router = Router();
 
@@ -88,6 +90,7 @@ const appStateKeySchema = z.enum([
   'flashcards:session_size',
   'risk:completed_date',
   'reading_fluency:state',
+  'streak:daily_goal',
 ]);
 
 const backupSchema = z.object({
@@ -134,6 +137,20 @@ const backupSchema = z.object({
     })
   ),
   grammarProgress: z.array(grammarProgressSchema),
+});
+
+const backupScheduleSchema = z.object({
+  cadence: z.enum(['daily', 'weekly', 'monthly']),
+  timezone: z.string().min(1).max(100).default('UTC'),
+  timeOfDay: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  dayOfWeek: z.number().int().min(0).max(6).optional(),
+  dayOfMonth: z.number().int().min(1).max(31).optional(),
+  destinationPath: z.string().min(3).max(300),
+  active: z.boolean().default(false),
+});
+
+const backupScheduleToggleSchema = z.object({
+  active: z.boolean(),
 });
 
 router.get('/words', (_req, res) => {
@@ -302,6 +319,50 @@ router.delete('/grammar/progress/:skillId', (req, res) => {
 
 router.get('/backup/export', (_req, res) => {
   res.json(exportFullBackup());
+});
+
+router.get('/backup/schedule', (_req, res) => {
+  res.json({ schedule: getBackupScheduleConfig() });
+});
+
+router.post('/backup/schedule', (req, res) => {
+  const parsed = backupScheduleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
+  }
+
+  const body = parsed.data;
+  if (body.cadence === 'weekly' && body.dayOfWeek == null) {
+    return res.status(400).json({ error: 'dayOfWeek is required for weekly cadence' });
+  }
+  if (body.cadence === 'monthly' && body.dayOfMonth == null) {
+    return res.status(400).json({ error: 'dayOfMonth is required for monthly cadence' });
+  }
+
+  const schedule = saveBackupSchedule({
+    cadence: body.cadence,
+    timezone: body.timezone,
+    timeOfDay: body.timeOfDay,
+    dayOfWeek: body.dayOfWeek,
+    dayOfMonth: body.dayOfMonth,
+    destinationPath: body.destinationPath,
+    active: body.active,
+  });
+
+  res.json({ schedule });
+});
+
+router.post('/backup/schedule/pause', (req, res) => {
+  const parsed = backupScheduleToggleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
+  }
+
+  const schedule = toggleBackupSchedule(parsed.data.active);
+  if (!schedule) {
+    return res.status(404).json({ error: 'No backup schedule found' });
+  }
+  res.json({ schedule });
 });
 
 router.post('/backup/import', (req, res) => {

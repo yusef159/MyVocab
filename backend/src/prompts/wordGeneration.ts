@@ -10,3 +10,23 @@ export const suggestMeaningsPrompt = (word: string) => `
 For "${word}", return JSON only:
 {"english":"${word}","arabicMeanings":["م1","م2","م3"],"exampleSentences":["English s1","English s2","English s3"]}
 Provide 3 accurate Arabic meanings, 3 short English example sentences (NO commas) using the word.`;
+
+export const autoScheduleWordsPrompt = (
+  count: number,
+  userPrompt: string,
+  excludedWords: string[] = []
+) => `
+You are generating English vocabulary words for Arabic learners.
+User request: "${userPrompt}"
+
+Generate exactly ${count} candidate words and return JSON array only:
+[{"english":"word","arabicMeanings":["3 Arabic meanings"],"exampleSentences":["3 English sentences"]}]
+
+Rules:
+- Use common, practical vocabulary that matches the user request.
+- Keep one single word in "english" (no spaces, no punctuation around it).
+- Provide 3 accurate Arabic meanings.
+- Provide 3 simple English example sentences that naturally use the word.
+- Do not include duplicate words.
+${excludedWords.length > 0 ? `- Do NOT use these words: ${excludedWords.join(', ')}` : ''}
+`;

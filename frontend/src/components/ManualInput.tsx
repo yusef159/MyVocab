@@ -3,12 +3,22 @@ import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
 import { wordExists } from '../db';
+import { useSearchParams } from 'react-router-dom';
 
 type InputMode = 'manual' | 'ai';
+const INPUT_MODE_STORAGE_KEY = 'manual-input-mode';
+
+const getStoredInputMode = (): InputMode => {
+  if (typeof window === 'undefined') return 'manual';
+
+  const stored = window.localStorage.getItem(INPUT_MODE_STORAGE_KEY);
+  return stored === 'ai' ? 'ai' : 'manual';
+};
 
 export default function ManualInput() {
+  const [searchParams] = useSearchParams();
   const [word, setWord] = useState('');
-  const [inputMode, setInputMode] = useState<InputMode>('manual');
+  const [inputMode, setInputMode] = useState<InputMode>(getStoredInputMode);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Manual input fields
@@ -59,6 +69,49 @@ export default function ManualInput() {
     const t = setTimeout(() => setSuccessMessage(null), 3000);
     return () => clearTimeout(t);
   }, [successMessage]);
+
+  useEffect(() => {
+    const prefWord = (searchParams.get('word') ?? '').trim();
+    const prefMode = searchParams.get('mode');
+
+    if (prefWord) {
+      setWord(prefWord);
+      clearSuggestions();
+      clearError();
+    }
+
+    if (prefMode === 'ai' || prefMode === 'manual') {
+      setInputMode(prefMode);
+    }
+  }, [searchParams, clearSuggestions]);
+
+  useEffect(() => {
+    window.localStorage.setItem(INPUT_MODE_STORAGE_KEY, inputMode);
+  }, [inputMode]);
+
+  useEffect(() => {
+    const prefWord = (searchParams.get('word') ?? '').trim();
+    const prefMode = searchParams.get('mode');
+    if (!prefWord || prefMode !== 'ai') return;
+
+    let cancelled = false;
+    const runAutoSuggestion = async () => {
+      if (await wordExists(prefWord)) {
+        if (!cancelled) {
+          setDuplicateError(prefWord);
+        }
+        return;
+      }
+      if (!cancelled) {
+        void suggestMeanings(prefWord);
+      }
+    };
+
+    void runAutoSuggestion();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, suggestMeanings]);
 
   const handleSave = async (
     english: string,

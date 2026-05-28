@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import type { Word, WordReviewEvent } from '../types';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
 import { exportFullBackup, exportLegacyIndexedDbBackup, importFullBackup } from '../db';
+import { useNavigate } from 'react-router-dom';
 import {
   LineChart,
   Line,
@@ -765,7 +766,8 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
 }
 
 export default function WordList() {
-  const { words, isLoading, loadWords, removeWord, importWords } = useVocabStore();
+  const navigate = useNavigate();
+  const { words, isLoading, loadWords, removeWord, importWords, autoSchedule, loadAutoSchedule } = useVocabStore();
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
@@ -946,6 +948,10 @@ export default function WordList() {
   }, [loadWords]);
 
   useEffect(() => {
+    void loadAutoSchedule();
+  }, [loadAutoSchedule]);
+
+  useEffect(() => {
     const onDocumentClick = (event: MouseEvent) => {
       if (!dataMenuRef.current) return;
       if (!dataMenuRef.current.contains(event.target as Node)) {
@@ -976,6 +982,7 @@ export default function WordList() {
     const matchesLearning = pct >= learningMin && pct <= learningMax;
     return matchesSearch && matchesFilter && matchesLearning;
   });
+  const trimmedSearchQuery = searchQuery.trim();
 
   if (isLoading) {
     return (
@@ -991,7 +998,15 @@ export default function WordList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
+          {autoSchedule?.active && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs sm:text-sm font-medium text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Auto Generate ON
+            </span>
+          )}
+        </div>
 
         <input
           type="file"
@@ -1307,7 +1322,34 @@ export default function WordList() {
               </p>
             </>
           ) : (
-            <p className="text-gray-400 text-lg">No words match your search.</p>
+            <>
+              <p className="text-gray-400 text-lg">No words match your search.</p>
+              {trimmedSearchQuery && (
+                <>
+                  
+                  <div className="mt-4 flex flex-col sm:flex-row gap-3 justify-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/manual?word=${encodeURIComponent(trimmedSearchQuery)}&mode=manual`)
+                      }
+                      className="px-4 py-2 rounded-lg border border-gray-600 text-gray-200 hover:bg-gray-700 transition-colors"
+                    >
+                      Add manually
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/manual?word=${encodeURIComponent(trimmedSearchQuery)}&mode=ai`)
+                      }
+                      className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
+                    >
+                      Add with AI suggestions
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
           )}
         </div>
       ) : (

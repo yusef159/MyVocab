@@ -172,7 +172,17 @@ function filterWords(
 }
 
 export default function Flashcards() {
-  const { words, isLoading, loadWords, markAsKnown, markAsProblem, streak, loadStreak } = useVocabStore();
+  const {
+    words,
+    isLoading,
+    loadWords,
+    markAsKnown,
+    markAsProblem,
+    streak,
+    streakDailyGoal,
+    loadStreak,
+    loadStreakDailyGoal,
+  } = useVocabStore();
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -235,7 +245,8 @@ export default function Flashcards() {
   useEffect(() => {
     loadWords();
     loadStreak();
-  }, [loadWords, loadStreak]);
+    loadStreakDailyGoal();
+  }, [loadWords, loadStreak, loadStreakDailyGoal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -297,13 +308,13 @@ export default function Flashcards() {
     }
   }, [streak, previousReviewsToday]);
 
-  // Track streak progress and show message when 20 reviews reached
+  // Track streak progress and show message when daily goal is reached
   useEffect(() => {
     if (streak && previousReviewsToday !== null) {
       const currentReviews = streak.reviewsToday || 0;
       
-      // If we just hit 20 reviews (went from less than 20 to exactly 20)
-      if (previousReviewsToday < 20 && currentReviews === 20) {
+      // If we just hit the streak daily goal (went from less than goal to exactly goal)
+      if (previousReviewsToday < streakDailyGoal && currentReviews === streakDailyGoal) {
         setShowStreakMessage(true);
         // Auto-hide after 5 seconds
         const timer = setTimeout(() => {
@@ -317,7 +328,7 @@ export default function Flashcards() {
         setPreviousReviewsToday(currentReviews);
       }
     }
-  }, [streak, previousReviewsToday]);
+  }, [streak, previousReviewsToday, streakDailyGoal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1652,7 +1663,7 @@ export default function Flashcards() {
               <div>
                 <p className="text-white font-bold text-xl">Streak Achieved!</p>
                 <p className="text-orange-100 text-sm mt-1">
-                  You've completed 20 reviews today! Your streak is now {streak?.currentStreak || 1} day{streak?.currentStreak !== 1 ? 's' : ''}.
+                  You've completed {streakDailyGoal} reviews today! Your streak is now {streak?.currentStreak || 1} day{streak?.currentStreak !== 1 ? 's' : ''}.
                 </p>
               </div>
             </div>

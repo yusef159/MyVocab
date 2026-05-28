@@ -1,6 +1,15 @@
 import axios from 'axios';
 import Dexie from 'dexie';
-import type { Word, RiskWord, StreakData, WordReviewEvent, GrammarProgress } from '../types';
+import type {
+  AutoScheduleConfig,
+  AutoScheduleRun,
+  BackupScheduleConfig,
+  GrammarProgress,
+  RiskWord,
+  StreakData,
+  Word,
+  WordReviewEvent,
+} from '../types';
 
 export interface DailyReviewCount {
   date: string; // YYYY-MM-DD
@@ -24,7 +33,18 @@ export type AppStateKey =
   | 'flashcards:active_session'
   | 'flashcards:session_size'
   | 'risk:completed_date'
-  | 'reading_fluency:state';
+  | 'reading_fluency:state'
+  | 'streak:daily_goal';
+
+export const MIN_STREAK_DAILY_GOAL = 20;
+export const DEFAULT_STREAK_DAILY_GOAL = 20;
+
+function normalizeStreakDailyGoal(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_STREAK_DAILY_GOAL;
+  }
+  return Math.max(MIN_STREAK_DAILY_GOAL, Math.floor(value));
+}
 
 const API_URL = '';
 
@@ -185,12 +205,78 @@ export async function saveRiskSessionCompletedDate(date: string): Promise<void> 
   await setAppState('risk:completed_date', date);
 }
 
+export async function getStreakDailyGoal(): Promise<number> {
+  const value = await getAppState<number>('streak:daily_goal');
+  return normalizeStreakDailyGoal(value);
+}
+
+export async function saveStreakDailyGoal(goal: number): Promise<number> {
+  const normalized = normalizeStreakDailyGoal(goal);
+  await setAppState('streak:daily_goal', normalized);
+  return normalized;
+}
+
 export async function getReadingFluencyState<T>(): Promise<T | null> {
   return getAppState<T>('reading_fluency:state');
 }
 
 export async function saveReadingFluencyState<T>(state: T): Promise<void> {
   await setAppState('reading_fluency:state', state);
+}
+
+export async function getAutoScheduleConfig(): Promise<AutoScheduleConfig | null> {
+  const res = await axios.get<{ schedule: AutoScheduleConfig | null }>(`${API_URL}/api/words/auto-schedule`);
+  return res.data.schedule;
+}
+
+export async function saveAutoScheduleConfig(payload: {
+  prompt: string;
+  count: number;
+  cadence: 'daily' | 'weekly' | 'monthly';
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  active: boolean;
+}): Promise<AutoScheduleConfig> {
+  const res = await axios.post<{ schedule: AutoScheduleConfig }>(`${API_URL}/api/words/auto-schedule`, payload);
+  return res.data.schedule;
+}
+
+export async function setAutoScheduleActive(active: boolean): Promise<AutoScheduleConfig> {
+  const res = await axios.post<{ schedule: AutoScheduleConfig }>(`${API_URL}/api/words/auto-schedule/pause`, { active });
+  return res.data.schedule;
+}
+
+export async function getAutoScheduleRuns(limit = 20): Promise<AutoScheduleRun[]> {
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+  const res = await axios.get<{ runs: AutoScheduleRun[] }>(`${API_URL}/api/words/auto-schedule/runs`, {
+    params: { limit: safeLimit },
+  });
+  return res.data.runs;
+}
+
+export async function getBackupScheduleConfig(): Promise<BackupScheduleConfig | null> {
+  const res = await axios.get<{ schedule: BackupScheduleConfig | null }>(`${API_URL}/api/data/backup/schedule`);
+  return res.data.schedule;
+}
+
+export async function saveBackupScheduleConfig(payload: {
+  cadence: 'daily' | 'weekly' | 'monthly';
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  destinationPath: string;
+  active: boolean;
+}): Promise<BackupScheduleConfig> {
+  const res = await axios.post<{ schedule: BackupScheduleConfig }>(`${API_URL}/api/data/backup/schedule`, payload);
+  return res.data.schedule;
+}
+
+export async function setBackupScheduleActive(active: boolean): Promise<BackupScheduleConfig> {
+  const res = await axios.post<{ schedule: BackupScheduleConfig }>(`${API_URL}/api/data/backup/schedule/pause`, { active });
+  return res.data.schedule;
 }
 
 // Grammar progress operations

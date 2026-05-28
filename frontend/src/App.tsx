@@ -8,6 +8,7 @@ import Flashcards from './components/Flashcards';
 import TestTab from './components/TestTab';
 import GrammarTab from './components/GrammarTab';
 import ReadingFluencyTab from './components/ReadingFluencyTab';
+import Settings from './components/Settings';
 import { useVocabStore } from './stores/vocabStore';
 
 function App() {
@@ -125,6 +126,20 @@ function App() {
             >
               Reading Fluency
             </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `px-3 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center ${
+                  isActive
+                    ? 'bg-gray-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700'
+                }`
+              }
+              title="Settings"
+              aria-label="Settings"
+            >
+              <img src="/settings-icon.png" alt="" className="h-4 w-4 object-contain" aria-hidden />
+            </NavLink>
           </div>
         </div>
       </nav>
@@ -139,6 +154,7 @@ function App() {
           <Route path="/test" element={<TestTab />} />
           <Route path="/grammar" element={<GrammarTab />} />
           <Route path="/reading" element={<ReadingFluencyTab />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

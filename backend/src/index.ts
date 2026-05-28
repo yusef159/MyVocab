@@ -7,6 +7,8 @@ import wordsRouter from './routes/words.js';
 import grammarRouter from './routes/grammar.js';
 import dataRouter from './routes/data.js';
 import { initDatabase } from './db/index.js';
+import { startAutoWordScheduler } from './services/autoWordScheduler.js';
+import { startAutoBackupScheduler } from './services/autoBackupScheduler.js';
 
 dotenv.config();
 
@@ -17,6 +19,8 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 initDatabase();
+startAutoWordScheduler();
+startAutoBackupScheduler();
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));

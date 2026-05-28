@@ -47,6 +47,8 @@ export interface DailyReviewCount {
 }
 
 export type GrammarSkillStatus = 'not_started' | 'in_progress' | 'mastered';
+export type AutoScheduleCadence = 'daily' | 'weekly' | 'monthly';
+export type AutoScheduleRunStatus = 'running' | 'success' | 'failed';
 
 export interface GrammarProgress {
   skillId: string;
@@ -57,6 +59,47 @@ export interface GrammarProgress {
   status: GrammarSkillStatus;
   lastResult?: 'correct' | 'incorrect';
   lastUpdated?: string;
+}
+
+export interface AutoScheduleConfig {
+  id: string;
+  prompt: string;
+  count: number;
+  cadence: AutoScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  nextRunAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackupScheduleConfig {
+  id: string;
+  cadence: AutoScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  destinationPath: string;
+  nextRunAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutoScheduleRun {
+  id: string;
+  scheduleId: string;
+  startedAt: string;
+  finishedAt?: string;
+  generatedCount: number;
+  savedCount: number;
+  skippedExistingCount: number;
+  status: AutoScheduleRunStatus;
+  error?: string;
 }
 
 export type FlashcardSessionFilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
@@ -76,7 +119,8 @@ export type AppStateKey =
   | 'flashcards:active_session'
   | 'flashcards:session_size'
   | 'risk:completed_date'
-  | 'reading_fluency:state';
+  | 'reading_fluency:state'
+  | 'streak:daily_goal';
 
 export interface BackupPayloadV1 {
   schemaVersion: 1;
@@ -89,8 +133,13 @@ export interface BackupPayloadV1 {
 }
 
 const STREAK_ID = 'main-streak';
+const STREAK_DAILY_GOAL_KEY = 'streak:daily_goal';
+const MIN_STREAK_DAILY_GOAL = 20;
+const DEFAULT_STREAK_DAILY_GOAL = 20;
 const RISK_DAYS_THRESHOLD = 14;
 const FLASHCARD_LAST_COMPLETED_SESSION_KEY = 'flashcards:last_completed_session';
+const AUTO_SCHEDULE_DEFAULT_ID = 'main-auto-schedule';
+const BACKUP_SCHEDULE_DEFAULT_ID = 'main-backup-schedule';
 
 const DB_PATH = process.env.DB_PATH || './data/myvocab.db';
 mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -105,6 +154,14 @@ function nowIso(): string {
 function normalizeSentences(input: string[]): string[] {
   const out = (input ?? []).filter(Boolean).map((s) => String(s).trim()).slice(0, 3);
   return out.length ? out : [''];
+}
+
+function isAutoScheduleCadence(value: unknown): value is AutoScheduleCadence {
+  return value === 'daily' || value === 'weekly' || value === 'monthly';
+}
+
+function isAutoScheduleRunStatus(value: unknown): value is AutoScheduleRunStatus {
+  return value === 'running' || value === 'success' || value === 'failed';
 }
 
 function parseJsonArray(value: string | null | undefined): string[] {
@@ -170,6 +227,56 @@ function toReviewEvent(row: Record<string, unknown>): WordReviewEvent {
   };
 }
 
+function toAutoScheduleConfig(row: Record<string, unknown>): AutoScheduleConfig {
+  const cadence = String(row.cadence);
+  return {
+    id: String(row.id),
+    prompt: String(row.prompt),
+    count: Number(row.count ?? 1),
+    cadence: isAutoScheduleCadence(cadence) ? cadence : 'daily',
+    timezone: String(row.timezone ?? 'UTC'),
+    timeOfDay: String(row.time_of_day ?? '09:00'),
+    dayOfWeek: row.day_of_week == null ? undefined : Number(row.day_of_week),
+    dayOfMonth: row.day_of_month == null ? undefined : Number(row.day_of_month),
+    nextRunAt: String(row.next_run_at),
+    active: Number(row.active ?? 0) === 1,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function toAutoScheduleRun(row: Record<string, unknown>): AutoScheduleRun {
+  const status = String(row.status);
+  return {
+    id: String(row.id),
+    scheduleId: String(row.schedule_id),
+    startedAt: String(row.started_at),
+    finishedAt: row.finished_at ? String(row.finished_at) : undefined,
+    generatedCount: Number(row.generated_count ?? 0),
+    savedCount: Number(row.saved_count ?? 0),
+    skippedExistingCount: Number(row.skipped_existing_count ?? 0),
+    status: isAutoScheduleRunStatus(status) ? status : 'failed',
+    error: row.error == null ? undefined : String(row.error),
+  };
+}
+
+function toBackupScheduleConfig(row: Record<string, unknown>): BackupScheduleConfig {
+  const cadence = String(row.cadence);
+  return {
+    id: String(row.id),
+    cadence: isAutoScheduleCadence(cadence) ? cadence : 'weekly',
+    timezone: String(row.timezone ?? 'UTC'),
+    timeOfDay: String(row.time_of_day ?? '03:00'),
+    dayOfWeek: row.day_of_week == null ? undefined : Number(row.day_of_week),
+    dayOfMonth: row.day_of_month == null ? undefined : Number(row.day_of_month),
+    destinationPath: String(row.destination_path ?? 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json'),
+    nextRunAt: String(row.next_run_at),
+    active: Number(row.active ?? 0) === 1,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
 function toStreakData(row: Record<string, unknown> | undefined): StreakData {
   if (!row) {
     return {
@@ -190,6 +297,14 @@ function toStreakData(row: Record<string, unknown> | undefined): StreakData {
     reviewsToday: Number(row.reviews_today ?? 0),
     reviewsDate: String(row.reviews_date ?? ''),
   };
+}
+
+function getStreakDailyGoal(): number {
+  const value = getAppStateJson<number>(STREAK_DAILY_GOAL_KEY);
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_STREAK_DAILY_GOAL;
+  }
+  return Math.max(MIN_STREAK_DAILY_GOAL, Math.floor(value));
 }
 
 export function initDatabase(): void {
@@ -248,10 +363,279 @@ export function initDatabase(): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS schedule_config (
+      id TEXT PRIMARY KEY,
+      prompt TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      cadence TEXT NOT NULL,
+      timezone TEXT NOT NULL,
+      time_of_day TEXT NOT NULL,
+      day_of_week INTEGER,
+      day_of_month INTEGER,
+      next_run_at TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS schedule_runs (
+      id TEXT PRIMARY KEY,
+      schedule_id TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      generated_count INTEGER NOT NULL DEFAULT 0,
+      saved_count INTEGER NOT NULL DEFAULT 0,
+      skipped_existing_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      error TEXT,
+      FOREIGN KEY (schedule_id) REFERENCES schedule_config(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS backup_schedule_config (
+      id TEXT PRIMARY KEY,
+      cadence TEXT NOT NULL,
+      timezone TEXT NOT NULL,
+      time_of_day TEXT NOT NULL,
+      day_of_week INTEGER,
+      day_of_month INTEGER,
+      destination_path TEXT NOT NULL DEFAULT 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json',
+      next_run_at TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_words_status ON words(status);
     CREATE INDEX IF NOT EXISTS idx_word_review_events_word_id ON word_review_events(word_id);
     CREATE INDEX IF NOT EXISTS idx_word_review_events_created_at ON word_review_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_schedule_config_active_next_run ON schedule_config(active, next_run_at);
+    CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule_started ON schedule_runs(schedule_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_backup_schedule_active_next_run ON backup_schedule_config(active, next_run_at);
   `);
+
+  const backupColumns = db.prepare('PRAGMA table_info(backup_schedule_config)').all() as Array<{ name: string }>;
+  const hasDestinationPath = backupColumns.some((column) => column.name === 'destination_path');
+  if (!hasDestinationPath) {
+    db.exec(
+      "ALTER TABLE backup_schedule_config ADD COLUMN destination_path TEXT NOT NULL DEFAULT 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json'"
+    );
+  }
+}
+
+export function getAutoScheduleConfig(): AutoScheduleConfig | null {
+  const row = db.prepare('SELECT * FROM schedule_config WHERE id = ?').get(AUTO_SCHEDULE_DEFAULT_ID) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? toAutoScheduleConfig(row) : null;
+}
+
+export function saveAutoScheduleConfig(input: {
+  prompt: string;
+  count: number;
+  cadence: AutoScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  nextRunAt: string;
+  active: boolean;
+}): AutoScheduleConfig {
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO schedule_config (
+      id, prompt, count, cadence, timezone, time_of_day, day_of_week, day_of_month, next_run_at, active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      prompt = excluded.prompt,
+      count = excluded.count,
+      cadence = excluded.cadence,
+      timezone = excluded.timezone,
+      time_of_day = excluded.time_of_day,
+      day_of_week = excluded.day_of_week,
+      day_of_month = excluded.day_of_month,
+      next_run_at = excluded.next_run_at,
+      active = excluded.active,
+      updated_at = excluded.updated_at`
+  ).run(
+    AUTO_SCHEDULE_DEFAULT_ID,
+    input.prompt,
+    input.count,
+    input.cadence,
+    input.timezone,
+    input.timeOfDay,
+    input.dayOfWeek ?? null,
+    input.dayOfMonth ?? null,
+    input.nextRunAt,
+    input.active ? 1 : 0,
+    now,
+    now
+  );
+
+  return getAutoScheduleConfig() as AutoScheduleConfig;
+}
+
+export function setAutoScheduleActive(active: boolean): AutoScheduleConfig | null {
+  const config = getAutoScheduleConfig();
+  if (!config) return null;
+
+  db.prepare('UPDATE schedule_config SET active = ?, updated_at = ? WHERE id = ?').run(
+    active ? 1 : 0,
+    nowIso(),
+    AUTO_SCHEDULE_DEFAULT_ID
+  );
+  return getAutoScheduleConfig();
+}
+
+export function updateAutoScheduleNextRun(nextRunAt: string): AutoScheduleConfig | null {
+  const config = getAutoScheduleConfig();
+  if (!config) return null;
+
+  db.prepare('UPDATE schedule_config SET next_run_at = ?, updated_at = ? WHERE id = ?').run(
+    nextRunAt,
+    nowIso(),
+    AUTO_SCHEDULE_DEFAULT_ID
+  );
+  return getAutoScheduleConfig();
+}
+
+export function getDueAutoScheduleConfigs(now = nowIso()): AutoScheduleConfig[] {
+  const rows = db
+    .prepare(
+      'SELECT * FROM schedule_config WHERE active = 1 AND datetime(next_run_at) <= datetime(?) ORDER BY next_run_at ASC'
+    )
+    .all(now) as Record<string, unknown>[];
+  return rows.map(toAutoScheduleConfig);
+}
+
+export function createAutoScheduleRun(scheduleId: string): AutoScheduleRun {
+  const id = randomUUID();
+  const startedAt = nowIso();
+  db.prepare(
+    `INSERT INTO schedule_runs (
+      id, schedule_id, started_at, finished_at, generated_count, saved_count, skipped_existing_count, status, error
+    ) VALUES (?, ?, ?, NULL, 0, 0, 0, 'running', NULL)`
+  ).run(id, scheduleId, startedAt);
+
+  const row = db.prepare('SELECT * FROM schedule_runs WHERE id = ?').get(id) as Record<string, unknown>;
+  return toAutoScheduleRun(row);
+}
+
+export function finishAutoScheduleRun(input: {
+  runId: string;
+  generatedCount: number;
+  savedCount: number;
+  skippedExistingCount: number;
+  status: Exclude<AutoScheduleRunStatus, 'running'>;
+  error?: string;
+}): void {
+  db.prepare(
+    `UPDATE schedule_runs SET
+      finished_at = ?,
+      generated_count = ?,
+      saved_count = ?,
+      skipped_existing_count = ?,
+      status = ?,
+      error = ?
+    WHERE id = ?`
+  ).run(
+    nowIso(),
+    Math.max(0, Math.floor(input.generatedCount)),
+    Math.max(0, Math.floor(input.savedCount)),
+    Math.max(0, Math.floor(input.skippedExistingCount)),
+    input.status,
+    input.error ?? null,
+    input.runId
+  );
+}
+
+export function getRecentAutoScheduleRuns(limit = 20): AutoScheduleRun[] {
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+  const rows = db
+    .prepare('SELECT * FROM schedule_runs ORDER BY started_at DESC LIMIT ?')
+    .all(safeLimit) as Record<string, unknown>[];
+  return rows.map(toAutoScheduleRun);
+}
+
+export function getBackupScheduleConfig(): BackupScheduleConfig | null {
+  const row = db.prepare('SELECT * FROM backup_schedule_config WHERE id = ?').get(BACKUP_SCHEDULE_DEFAULT_ID) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? toBackupScheduleConfig(row) : null;
+}
+
+export function saveBackupScheduleConfig(input: {
+  cadence: AutoScheduleCadence;
+  timezone: string;
+  timeOfDay: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  destinationPath: string;
+  nextRunAt: string;
+  active: boolean;
+}): BackupScheduleConfig {
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO backup_schedule_config (
+      id, cadence, timezone, time_of_day, day_of_week, day_of_month, destination_path, next_run_at, active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      cadence = excluded.cadence,
+      timezone = excluded.timezone,
+      time_of_day = excluded.time_of_day,
+      day_of_week = excluded.day_of_week,
+      day_of_month = excluded.day_of_month,
+      destination_path = excluded.destination_path,
+      next_run_at = excluded.next_run_at,
+      active = excluded.active,
+      updated_at = excluded.updated_at`
+  ).run(
+    BACKUP_SCHEDULE_DEFAULT_ID,
+    input.cadence,
+    input.timezone,
+    input.timeOfDay,
+    input.dayOfWeek ?? null,
+    input.dayOfMonth ?? null,
+    input.destinationPath,
+    input.nextRunAt,
+    input.active ? 1 : 0,
+    now,
+    now
+  );
+
+  return getBackupScheduleConfig() as BackupScheduleConfig;
+}
+
+export function setBackupScheduleActive(active: boolean): BackupScheduleConfig | null {
+  const config = getBackupScheduleConfig();
+  if (!config) return null;
+
+  db.prepare('UPDATE backup_schedule_config SET active = ?, updated_at = ? WHERE id = ?').run(
+    active ? 1 : 0,
+    nowIso(),
+    BACKUP_SCHEDULE_DEFAULT_ID
+  );
+  return getBackupScheduleConfig();
+}
+
+export function updateBackupScheduleNextRun(nextRunAt: string): BackupScheduleConfig | null {
+  const config = getBackupScheduleConfig();
+  if (!config) return null;
+
+  db.prepare('UPDATE backup_schedule_config SET next_run_at = ?, updated_at = ? WHERE id = ?').run(
+    nextRunAt,
+    nowIso(),
+    BACKUP_SCHEDULE_DEFAULT_ID
+  );
+  return getBackupScheduleConfig();
+}
+
+export function getDueBackupScheduleConfigs(now = nowIso()): BackupScheduleConfig[] {
+  const rows = db
+    .prepare(
+      'SELECT * FROM backup_schedule_config WHERE active = 1 AND datetime(next_run_at) <= datetime(?) ORDER BY next_run_at ASC'
+    )
+    .all(now) as Record<string, unknown>[];
+  return rows.map(toBackupScheduleConfig);
 }
 
 export function saveFlashcardLastCompletedSession(session: FlashcardSessionSnapshot): void {
@@ -374,6 +758,7 @@ export function getStreakData(): StreakData {
 export function updateStreak(): StreakData {
   const today = new Date().toISOString().split('T')[0];
   const streak = getStreakData();
+  const streakDailyGoal = getStreakDailyGoal();
 
   let reviewsToday = streak.reviewsToday || 0;
   let reviewsDate = streak.reviewsDate || '';
@@ -387,7 +772,7 @@ export function updateStreak(): StreakData {
   incrementDailyReviewCount(today);
 
   let updated: StreakData;
-  if (reviewsToday === 20) {
+  if (reviewsToday === streakDailyGoal) {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
