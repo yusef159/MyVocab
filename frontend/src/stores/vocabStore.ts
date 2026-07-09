@@ -37,6 +37,7 @@ import {
   saveStreakDailyGoal as dbSaveStreakDailyGoal,
   setAutoScheduleActive as dbSetAutoScheduleActive,
   setBackupScheduleActive as dbSetBackupScheduleActive,
+  runBackupNow as dbRunBackupNow,
 } from '../db';
 
 // Use relative URL since frontend is served from the same server as the API
@@ -60,6 +61,7 @@ function applyLocalReviewUpdate(
         wrongCount: word.wrongCount + 1,
         status: 'problem' as const,
         streak: 0,
+        interval: Math.max(1, Math.floor(word.interval / 2)),
         lastReviewedAt: now,
       };
     }
@@ -67,21 +69,26 @@ function applyLocalReviewUpdate(
     const nextCorrect = word.correctCount + 1;
     let nextStatus: Word['status'];
     let nextStreak: number;
+    let nextInterval: number;
 
     if (word.status === 'new') {
       nextStatus = 'known';
       nextStreak = 0;
+      nextInterval = 1;
     } else if (word.status === 'problem') {
       nextStreak = word.streak + 1;
       if (nextStreak >= 3) {
         nextStatus = 'known';
         nextStreak = 0;
+        nextInterval = Math.max(1, word.interval);
       } else {
         nextStatus = 'problem';
+        nextInterval = word.interval;
       }
     } else {
       nextStatus = 'known';
       nextStreak = 0;
+      nextInterval = word.interval + 1;
     }
 
     return {
@@ -89,6 +96,7 @@ function applyLocalReviewUpdate(
       correctCount: nextCorrect,
       status: nextStatus,
       streak: nextStreak,
+      interval: nextInterval,
       lastReviewedAt: now,
     };
   });
@@ -188,6 +196,7 @@ interface VocabState {
     active: boolean;
   }) => Promise<boolean>;
   setBackupScheduleActive: (active: boolean) => Promise<void>;
+  runBackupNow: (destinationPath?: string) => Promise<{ ok: boolean; destination?: string; message?: string }>;
   
   saveWord: (
     english: string,
@@ -431,6 +440,22 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     } catch (error) {
       console.error('Failed to update backup schedule state:', error);
       set({ error: 'Failed to update backup schedule state' });
+    }
+  },
+
+  runBackupNow: async (destinationPath) => {
+    try {
+      const result = await dbRunBackupNow(destinationPath);
+      set({ error: null });
+      return { ok: true, destination: result.destination };
+    } catch (error) {
+      console.error('Failed to run backup:', error);
+      const message =
+        axios.isAxiosError(error) && typeof error.response?.data?.message === 'string'
+          ? error.response.data.message
+          : 'Failed to run backup';
+      set({ error: message });
+      return { ok: false, message };
     }
   },
 

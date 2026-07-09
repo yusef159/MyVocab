@@ -14,6 +14,8 @@ export interface Word {
   wrongCount: number;
   correctCount: number;
   streak: number;  // Streak counter for problem words (0-3)
+  /** Spaced-repetition interval in days; known words resurface as at-risk after this many days */
+  interval: number;
   createdAt: Date;
   lastReviewedAt?: Date;
 }

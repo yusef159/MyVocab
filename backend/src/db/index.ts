@@ -16,6 +16,8 @@ export interface Word {
   wrongCount: number;
   correctCount: number;
   streak: number;
+  /** Spaced-repetition interval in days: a known word becomes at-risk once daysSinceReview >= interval */
+  interval: number;
   createdAt: string;
   lastReviewedAt?: string;
 }
@@ -136,7 +138,8 @@ const STREAK_ID = 'main-streak';
 const STREAK_DAILY_GOAL_KEY = 'streak:daily_goal';
 const MIN_STREAK_DAILY_GOAL = 20;
 const DEFAULT_STREAK_DAILY_GOAL = 20;
-const RISK_DAYS_THRESHOLD = 14;
+/** Interval (in days) assigned to a word the moment it first becomes "known" */
+const INITIAL_KNOWN_INTERVAL = 1;
 const FLASHCARD_LAST_COMPLETED_SESSION_KEY = 'flashcards:last_completed_session';
 const AUTO_SCHEDULE_DEFAULT_ID = 'main-auto-schedule';
 const BACKUP_SCHEDULE_DEFAULT_ID = 'main-backup-schedule';
@@ -212,6 +215,7 @@ function toWord(row: Record<string, unknown>): Word {
     wrongCount: Number(row.wrong_count ?? 0),
     correctCount: Number(row.correct_count ?? 0),
     streak: Number(row.streak ?? 0),
+    interval: Number(row.interval ?? 0),
     createdAt: String(row.created_at),
     lastReviewedAt: row.last_reviewed_at ? String(row.last_reviewed_at) : undefined,
   };
@@ -319,6 +323,7 @@ export function initDatabase(): void {
       wrong_count INTEGER NOT NULL DEFAULT 0,
       correct_count INTEGER NOT NULL DEFAULT 0,
       streak INTEGER NOT NULL DEFAULT 0,
+      interval INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       last_reviewed_at TEXT
     );
@@ -418,6 +423,17 @@ export function initDatabase(): void {
   if (!hasDestinationPath) {
     db.exec(
       "ALTER TABLE backup_schedule_config ADD COLUMN destination_path TEXT NOT NULL DEFAULT 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json'"
+    );
+  }
+
+  const wordColumns = db.prepare('PRAGMA table_info(words)').all() as Array<{ name: string }>;
+  const hasInterval = wordColumns.some((column) => column.name === 'interval');
+  if (!hasInterval) {
+    db.exec('ALTER TABLE words ADD COLUMN interval INTEGER NOT NULL DEFAULT 0');
+    // Backfill existing known words so they follow the new interval-based schedule
+    db.prepare('UPDATE words SET interval = ? WHERE status = ? AND interval = 0').run(
+      INITIAL_KNOWN_INTERVAL,
+      'known'
     );
   }
 }
@@ -716,8 +732,8 @@ export function addWord(input: {
   db.prepare(`
     INSERT INTO words (
       id, english, arabic_meanings, example_sentences, topic, status,
-      wrong_count, correct_count, streak, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, ?, 'new', 0, 0, 0, ?, NULL)
+      wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
+    ) VALUES (?, ?, ?, ?, ?, 'new', 0, 0, 0, 0, ?, NULL)
   `).run(
     id,
     input.english.trim(),
@@ -827,12 +843,23 @@ export function incrementWrongCount(id: string): void {
     correctCount: word.correctCount,
     status: 'problem' as WordStatus,
     streak: 0,
+    // Halve the spaced-repetition interval on a miss so the word resurfaces sooner
+    // (e.g. 8 -> 4), keeping a floor of the initial interval instead of resetting to it.
+    interval: Math.max(INITIAL_KNOWN_INTERVAL, Math.floor(word.interval / 2)),
     lastReviewedAt: nowIso(),
   };
 
   db.prepare(
-    'UPDATE words SET wrong_count = ?, correct_count = ?, status = ?, streak = ?, last_reviewed_at = ? WHERE id = ?'
-  ).run(updates.wrongCount, updates.correctCount, updates.status, updates.streak, updates.lastReviewedAt, id);
+    'UPDATE words SET wrong_count = ?, correct_count = ?, status = ?, streak = ?, interval = ?, last_reviewed_at = ? WHERE id = ?'
+  ).run(
+    updates.wrongCount,
+    updates.correctCount,
+    updates.status,
+    updates.streak,
+    updates.interval,
+    updates.lastReviewedAt,
+    id
+  );
 
   logWordReviewEvent(id, 'problem', updates.lastReviewedAt);
 }
@@ -846,27 +873,37 @@ export function incrementCorrectCount(id: string): void {
 
   let newStatus: WordStatus;
   let newStreak: number;
+  let newInterval: number;
 
   if (word.status === 'new') {
+    // First time learned: becomes known and starts the interval schedule
     newStatus = 'known';
     newStreak = 0;
+    newInterval = INITIAL_KNOWN_INTERVAL;
   } else if (word.status === 'problem') {
     newStreak = word.streak + 1;
     if (newStreak >= 3) {
+      // Cleared the 3-streak requirement: promote back to known while keeping the
+      // (already halved) interval so it resurfaces on the shortened schedule.
       newStatus = 'known';
       newStreak = 0;
+      newInterval = Math.max(INITIAL_KNOWN_INTERVAL, word.interval);
     } else {
+      // Still a problem word: interval does not grow while not known
       newStatus = 'problem';
+      newInterval = word.interval;
     }
   } else {
+    // Already known and answered correctly: extend the interval by one day
     newStatus = 'known';
     newStreak = 0;
+    newInterval = word.interval + 1;
   }
 
   const reviewedAt = nowIso();
   db.prepare(
-    'UPDATE words SET correct_count = ?, wrong_count = ?, status = ?, streak = ?, last_reviewed_at = ? WHERE id = ?'
-  ).run(newCorrect, word.wrongCount, newStatus, newStreak, reviewedAt, id);
+    'UPDATE words SET correct_count = ?, wrong_count = ?, status = ?, streak = ?, interval = ?, last_reviewed_at = ? WHERE id = ?'
+  ).run(newCorrect, word.wrongCount, newStatus, newStreak, newInterval, reviewedAt, id);
 
   logWordReviewEvent(id, 'known', reviewedAt);
 }
@@ -933,8 +970,8 @@ export function bulkAddWords(
   const insertStmt = db.prepare(`
     INSERT INTO words (
       id, english, arabic_meanings, example_sentences, topic, status,
-      wrong_count, correct_count, streak, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, NULL, 'new', 0, 0, 0, ?, NULL)
+      wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
+    ) VALUES (?, ?, ?, ?, NULL, 'new', 0, 0, 0, 0, ?, NULL)
   `);
 
   let added = 0;
@@ -969,6 +1006,51 @@ export function getWordStats(): { total: number; known: number; problem: number;
   return { total, known, problem, new: newCount };
 }
 
+function computeIntervalFromEvents(events: ReviewResult[], status: WordStatus): number {
+  if (events.length === 0) {
+    return status === 'new' ? 0 : INITIAL_KNOWN_INTERVAL;
+  }
+  if (events[events.length - 1] === 'problem') {
+    return INITIAL_KNOWN_INTERVAL;
+  }
+  let run = 0;
+  for (let i = events.length - 1; i >= 0 && events[i] === 'known'; i--) {
+    run += 1;
+  }
+  return run;
+}
+
+export function refreshWordIntervals(): { updated: number; distribution: Record<number, number> } {
+  const eventRows = db
+    .prepare('SELECT word_id, result FROM word_review_events ORDER BY created_at ASC, id ASC')
+    .all() as Array<{ word_id: string; result: string }>;
+
+  const eventsByWord = new Map<string, ReviewResult[]>();
+  for (const row of eventRows) {
+    const wordId = String(row.word_id);
+    const list = eventsByWord.get(wordId) ?? [];
+    list.push(row.result === 'problem' ? 'problem' : 'known');
+    eventsByWord.set(wordId, list);
+  }
+
+  const words = db.prepare('SELECT id, status FROM words').all() as Array<{ id: string; status: string }>;
+  const updateStmt = db.prepare('UPDATE words SET interval = ? WHERE id = ?');
+  const distribution: Record<number, number> = {};
+
+  const tx = db.transaction(() => {
+    for (const word of words) {
+      const status = String(word.status) as WordStatus;
+      const events = eventsByWord.get(String(word.id)) ?? [];
+      const interval = computeIntervalFromEvents(events, status);
+      updateStmt.run(interval, word.id);
+      distribution[interval] = (distribution[interval] ?? 0) + 1;
+    }
+  });
+
+  tx();
+  return { updated: words.length, distribution };
+}
+
 export function getRiskWords(): RiskWord[] {
   const words = getAllWords();
   const now = Date.now();
@@ -987,8 +1069,14 @@ export function getRiskWords(): RiskWord[] {
     })
     .filter((w) => w.totalReviews > 0)
     .filter((w) => w.learningRate < 1)
-    .filter((w) => w.daysSinceReview >= RISK_DAYS_THRESHOLD)
+    // Spaced-repetition gate: a known word is only at risk once it has gone
+    // unreviewed for at least its current interval (in days).
+    .filter((w) => w.interval > 0 && w.daysSinceReview >= w.interval)
     .sort((a, b) => {
+      // Most overdue relative to its own interval comes first
+      const overdueA = a.daysSinceReview - a.interval;
+      const overdueB = b.daysSinceReview - b.interval;
+      if (overdueB !== overdueA) return overdueB - overdueA;
       if (b.daysSinceReview !== a.daysSinceReview) return b.daysSinceReview - a.daysSinceReview;
       if (a.learningRate !== b.learningRate) return a.learningRate - b.learningRate;
       if ((b.wrongCount || 0) !== (a.wrongCount || 0)) return (b.wrongCount || 0) - (a.wrongCount || 0);
@@ -1118,8 +1206,8 @@ export function importFullBackup(payload: BackupPayloadV1): {
   const insertWord = db.prepare(`
     INSERT INTO words (
       id, english, arabic_meanings, example_sentences, topic, status,
-      wrong_count, correct_count, streak, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertEvent = db.prepare(
@@ -1155,6 +1243,7 @@ export function importFullBackup(payload: BackupPayloadV1): {
         word.wrongCount ?? 0,
         word.correctCount ?? 0,
         word.streak ?? 0,
+        word.interval ?? 0,
         word.createdAt,
         word.lastReviewedAt ?? null
       );

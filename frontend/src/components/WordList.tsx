@@ -3,7 +3,7 @@ import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
 import type { Word, WordReviewEvent } from '../types';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
-import { exportFullBackup, exportLegacyIndexedDbBackup, importFullBackup } from '../db';
+import { exportFullBackup, exportLegacyIndexedDbBackup, importFullBackup, refreshWordIntervals } from '../db';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart,
@@ -53,6 +53,29 @@ function calculateLearningPercentage(correctCount: number, wrongCount: number): 
   const total = correctCount + wrongCount;
   if (total === 0) return 0;
   return Math.round((correctCount / total) * 100);
+}
+
+type RiskTone = 'safe' | 'soon' | 'atrisk' | 'none';
+
+/**
+ * Days until a known word resurfaces as "at risk". A known word is at risk once
+ * it has gone unreviewed for at least its interval (in days), so the countdown is
+ * interval - daysSinceReview. Only meaningful for known words with an interval.
+ */
+function getWordRiskInfo(word: Word): { value: string; tone: RiskTone } {
+  if (word.status !== 'known' || !word.interval || word.interval <= 0 || !word.lastReviewedAt) {
+    return { value: '—', tone: 'none' };
+  }
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const daysSinceReview = Math.floor((Date.now() - new Date(word.lastReviewedAt).getTime()) / oneDayMs);
+  const daysUntilRisk = word.interval - daysSinceReview;
+  if (daysUntilRisk <= 0) {
+    return { value: 'At risk now', tone: 'atrisk' };
+  }
+  return {
+    value: `${daysUntilRisk} ${daysUntilRisk === 1 ? 'day' : 'days'}`,
+    tone: daysUntilRisk <= 2 ? 'soon' : 'safe',
+  };
 }
 
 type WordInfoModalMode = 'view' | 'edit' | 'suggest';
@@ -741,6 +764,27 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                     {word.lastReviewedAt ? formatDate(word.lastReviewedAt) : 'Not reviewed yet'}
                   </p>
                 </div>
+                {word.status === 'known' && (() => {
+                  const risk = getWordRiskInfo(word);
+                  return (
+                    <div className="bg-gray-700/50 rounded-lg p-4">
+                      <p className="text-gray-400 text-xs uppercase tracking-wide">Risk In</p>
+                      <p
+                        className={`mt-2 text-xl font-bold ${
+                          risk.tone === 'atrisk'
+                            ? 'text-red-400'
+                            : risk.tone === 'soon'
+                            ? 'text-yellow-400'
+                            : risk.tone === 'safe'
+                            ? 'text-emerald-400'
+                            : 'text-gray-500'
+                        }`}
+                      >
+                        {risk.value}
+                      </p>
+                    </div>
+                  );
+                })()}
                 {word.status === 'problem' && (word.streak || 0) > 0 && (
                   <div className="bg-gray-700/50 rounded-lg p-4">
                     <p className="text-gray-400 text-xs uppercase tracking-wide">Streak</p>
@@ -777,6 +821,7 @@ export default function WordList() {
   const [learningMax, setLearningMax] = useState(100);
   const [wordToDelete, setWordToDelete] = useState<Word | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isRefreshingIntervals, setIsRefreshingIntervals] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const dataMenuRef = useRef<HTMLDivElement>(null);
@@ -940,6 +985,25 @@ export default function WordList() {
     } catch (error) {
       setImportMessage({ type: 'error', text: 'Failed to migrate legacy browser data to server.' });
       setTimeout(() => setImportMessage(null), 5000);
+    }
+  };
+
+  const handleRefreshIntervals = async () => {
+    setShowDataMenu(false);
+    setIsRefreshingIntervals(true);
+    try {
+      const result = await refreshWordIntervals();
+      await loadWords();
+      setImportMessage({
+        type: 'success',
+        text: `Intervals refreshed for ${result.updated} words.`,
+      });
+      setTimeout(() => setImportMessage(null), 7000);
+    } catch {
+      setImportMessage({ type: 'error', text: 'Failed to refresh intervals from review history.' });
+      setTimeout(() => setImportMessage(null), 5000);
+    } finally {
+      setIsRefreshingIntervals(false);
     }
   };
 
@@ -1135,6 +1199,21 @@ export default function WordList() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
                 Migrate local data
+              </button>
+
+              <div className="my-1 border-t border-gray-700" />
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Schedule</p>
+              <button
+                type="button"
+                onClick={() => void handleRefreshIntervals()}
+                disabled={isRefreshingIntervals}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Recalculate review intervals from history"
+              >
+                <svg className="h-4 w-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {isRefreshingIntervals ? 'Refreshing…' : 'Refresh intervals'}
               </button>
             </div>
           )}

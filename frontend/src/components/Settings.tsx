@@ -25,6 +25,7 @@ export default function Settings() {
     error,
     loadBackupSchedule,
     loadStreakDailyGoal,
+    runBackupNow,
     saveBackupSchedule,
     saveStreakDailyGoal,
     setBackupScheduleActive,
@@ -40,6 +41,7 @@ export default function Settings() {
   const [destinationPath, setDestinationPath] = useState('gdrive:Raspberry Pi/MyVocab/myvocab-backup.json');
   const [expandedPanel, setExpandedPanel] = useState<'backup' | null>('backup');
   const [isSaving, setIsSaving] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
   const [isSavingStreakGoal, setIsSavingStreakGoal] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [streakGoalMessage, setStreakGoalMessage] = useState<string | null>(null);
@@ -118,6 +120,21 @@ export default function Settings() {
     await loadBackupSchedule();
     setMessage(ok ? 'Backup schedule saved.' : 'Failed to save backup schedule.');
     setIsSaving(false);
+  };
+
+  const handleBackupNow = async () => {
+    setIsBackingUp(true);
+    setMessage(null);
+    try {
+      const result = await runBackupNow(destinationPath.trim() || undefined);
+      if (result.ok) {
+        setMessage('Backup completed and uploaded to Google Drive.');
+      } else {
+        setMessage(result.message ?? 'Backup failed.');
+      }
+    } finally {
+      setIsBackingUp(false);
+    }
   };
 
   const handleSaveStreakGoal = async () => {
@@ -272,18 +289,36 @@ export default function Settings() {
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={isSaving || !destinationPath.trim()}
-              className={`px-5 py-3 rounded-lg font-medium transition-colors ${
-                isSaving || !destinationPath.trim()
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-500'
-              }`}
-            >
-              {isSaving ? 'Saving...' : 'Save Backup Settings'}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={isSaving || isBackingUp || !destinationPath.trim()}
+                className={`px-5 py-3 rounded-lg font-medium transition-colors ${
+                  isSaving || isBackingUp || !destinationPath.trim()
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                }`}
+              >
+                {isSaving ? 'Saving...' : 'Save Backup Settings'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleBackupNow()}
+                disabled={isBackingUp || isSaving || !destinationPath.trim()}
+                className={`px-5 py-3 rounded-lg font-medium transition-colors ${
+                  isBackingUp || isSaving || !destinationPath.trim()
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-500'
+                }`}
+              >
+                {isBackingUp ? 'Backing up...' : 'Backup Now'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              &ldquo;Backup Now&rdquo; immediately exports your data and uploads it to the Google Drive path above.
+            </p>
           </div>
         )}
       </div>
@@ -296,15 +331,15 @@ export default function Settings() {
           </p>
         </div>
 
-        {(streakGoalMessage || error) && (
+        {streakGoalMessage && (
           <div
             className={`p-3 rounded-lg border text-sm ${
-              error && !streakGoalMessage
+              streakGoalMessage.startsWith('Failed')
                 ? 'border-red-500/40 bg-red-500/10 text-red-300'
                 : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
             }`}
           >
-            {streakGoalMessage ?? error}
+            {streakGoalMessage}
           </div>
         )}
 

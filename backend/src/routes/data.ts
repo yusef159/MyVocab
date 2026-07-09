@@ -27,12 +27,13 @@ import {
   updateStreak,
   updateWordContent,
   updateWordReviewCounts,
+  refreshWordIntervals,
   wordExists,
   type BackupPayloadV1,
   type AppStateKey,
   type FlashcardSessionSnapshot,
 } from '../db/index.js';
-import { saveBackupSchedule, toggleBackupSchedule } from '../services/autoBackupScheduler.js';
+import { runBackupNow, saveBackupSchedule, toggleBackupSchedule } from '../services/autoBackupScheduler.js';
 
 const router = Router();
 
@@ -107,6 +108,7 @@ const backupSchema = z.object({
       wrongCount: z.number().int().min(0),
       correctCount: z.number().int().min(0),
       streak: z.number().int().min(0),
+      interval: z.number().int().min(0).optional(),
       createdAt: z.string(),
       lastReviewedAt: z.string().optional(),
     })
@@ -151,6 +153,10 @@ const backupScheduleSchema = z.object({
 
 const backupScheduleToggleSchema = z.object({
   active: z.boolean(),
+});
+
+const backupRunSchema = z.object({
+  destinationPath: z.string().min(3).max(300).optional(),
 });
 
 router.get('/words', (_req, res) => {
@@ -239,6 +245,10 @@ router.get('/words/stats', (_req, res) => {
 
 router.get('/words/risk', (_req, res) => {
   res.json({ words: getRiskWords() });
+});
+
+router.post('/words/refresh-intervals', (_req, res) => {
+  res.json(refreshWordIntervals());
 });
 
 router.get('/streak', (_req, res) => {
@@ -350,6 +360,24 @@ router.post('/backup/schedule', (req, res) => {
   });
 
   res.json({ schedule });
+});
+
+router.post('/backup/run', async (req, res) => {
+  const parsed = backupRunSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
+  }
+
+  try {
+    const result = await runBackupNow(parsed.data.destinationPath);
+    res.json({ ok: true, destination: result.destination, completedAt: result.completedAt });
+  } catch (error) {
+    console.error('Manual backup failed:', error);
+    res.status(500).json({
+      error: 'Backup failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 router.post('/backup/schedule/pause', (req, res) => {

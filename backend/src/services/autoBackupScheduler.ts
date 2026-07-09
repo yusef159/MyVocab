@@ -5,6 +5,7 @@ import path from 'path';
 import { unlink, writeFile } from 'fs/promises';
 import {
   exportFullBackup,
+  getBackupScheduleConfig,
   getDueBackupScheduleConfigs,
   saveBackupScheduleConfig,
   setBackupScheduleActive,
@@ -31,14 +32,8 @@ function getBackupDestinationFallback(): string {
   return process.env.BACKUP_GDRIVE_DEST?.trim() || DEFAULT_GDRIVE_DESTINATION;
 }
 
-async function runSchedule(config: BackupScheduleConfig): Promise<void> {
-  if (runningScheduleIds.has(config.id)) {
-    return;
-  }
-  runningScheduleIds.add(config.id);
-
+async function performBackup(destination: string): Promise<void> {
   const tempFilePath = path.join(tmpdir(), `myvocab-backup-${Date.now()}.json`);
-  const destination = config.destinationPath?.trim() || getBackupDestinationFallback();
 
   try {
     const payload = exportFullBackup();
@@ -48,14 +43,41 @@ async function runSchedule(config: BackupScheduleConfig): Promise<void> {
       timeout: 120_000,
       maxBuffer: 2 * 1024 * 1024,
     });
+  } finally {
+    await unlink(tempFilePath).catch(() => undefined);
+  }
+}
+
+async function runSchedule(config: BackupScheduleConfig): Promise<void> {
+  if (runningScheduleIds.has(config.id)) {
+    return;
+  }
+  runningScheduleIds.add(config.id);
+
+  const destination = config.destinationPath?.trim() || getBackupDestinationFallback();
+
+  try {
+    await performBackup(destination);
   } catch (error) {
     console.error('Auto backup run failed:', error);
   } finally {
     const nextRunAt = computeNextRunAt(config, new Date());
     updateBackupScheduleNextRun(nextRunAt);
     runningScheduleIds.delete(config.id);
-    await unlink(tempFilePath).catch(() => undefined);
   }
+}
+
+export async function runBackupNow(
+  destinationPath?: string
+): Promise<{ destination: string; completedAt: string }> {
+  const destination =
+    destinationPath?.trim() ||
+    getBackupScheduleConfig()?.destinationPath?.trim() ||
+    getBackupDestinationFallback();
+
+  await performBackup(destination);
+
+  return { destination, completedAt: nowIso() };
 }
 
 export function saveBackupSchedule(input: {

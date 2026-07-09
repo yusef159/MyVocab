@@ -55,7 +55,7 @@ export async function wordExists(english: string): Promise<boolean> {
   return res.data.exists;
 }
 
-export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount' | 'correctCount' | 'status' | 'streak'>): Promise<{ id: string | null; isDuplicate: boolean }> {
+export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount' | 'correctCount' | 'status' | 'streak' | 'interval'>): Promise<{ id: string | null; isDuplicate: boolean }> {
   const res = await axios.post<{ id: string | null; isDuplicate: boolean }>(`${API_URL}/api/data/words`, {
     english: word.english,
     arabicMeanings: word.arabicMeanings,
@@ -79,6 +79,13 @@ export async function getWordsByStatus(status: Word['status']): Promise<Word[]> 
 export async function getRiskWords(): Promise<RiskWord[]> {
   const res = await axios.get<{ words: RiskWord[] }>(`${API_URL}/api/data/words/risk`);
   return res.data.words;
+}
+
+export async function refreshWordIntervals(): Promise<{ updated: number; distribution: Record<number, number> }> {
+  const res = await axios.post<{ updated: number; distribution: Record<number, number> }>(
+    `${API_URL}/api/data/words/refresh-intervals`
+  );
+  return res.data;
 }
 
 export async function incrementWrongCount(id: string): Promise<void> {
@@ -279,6 +286,14 @@ export async function setBackupScheduleActive(active: boolean): Promise<BackupSc
   return res.data.schedule;
 }
 
+export async function runBackupNow(destinationPath?: string): Promise<{ destination: string; completedAt: string }> {
+  const res = await axios.post<{ ok: boolean; destination: string; completedAt: string }>(
+    `${API_URL}/api/data/backup/run`,
+    destinationPath ? { destinationPath } : {}
+  );
+  return { destination: res.data.destination, completedAt: res.data.completedAt };
+}
+
 // Grammar progress operations
 export async function getAllGrammarProgress(): Promise<GrammarProgress[]> {
   const res = await axios.get<{ items: GrammarProgress[] }>(`${API_URL}/api/data/grammar/progress`);
@@ -391,6 +406,7 @@ export async function exportLegacyIndexedDbBackup(): Promise<BackupPayloadV1 | n
     wrongCount: Number(w.wrongCount ?? 0),
     correctCount: Number(w.correctCount ?? 0),
     streak: Number(w.streak ?? 0),
+    interval: Number(w.interval ?? 0),
     createdAt: toDateOrNow(w.createdAt),
     lastReviewedAt: w.lastReviewedAt ? toDateOrNow(w.lastReviewedAt) : undefined,
   }));
