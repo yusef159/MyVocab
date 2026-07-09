@@ -10,11 +10,15 @@ services:
       # Find yours on the Pi with: rclone lsd gdrive:  and  rclone lsd "gdrive:Your Folder"
       # Example: gdrive:MyVocab backup/myvocab-backup.json
       BACKUP_GDRIVE_DEST: ${BACKUP_GDRIVE_DEST:-gdrive:MyVocab backup/myvocab-backup.json}
+      # Points rclone at the mounted config file inside the container
+      RCLONE_CONFIG: /config/rclone.conf
     # Same variables as local dev (OPENAI_API_KEY, optional PORT)
     env_file:
       - backend/.env
     volumes:
       - ./data:/app/data
-      # Host rclone config (Google Drive auth). Override RCLONE_CONFIG_DIR if your Pi user is not "pi".
-      - ${RCLONE_CONFIG_DIR:-/home/pi/.config/rclone}:/root/.config/rclone:ro
+      # Mount the host rclone.conf (Google Drive auth).
+      # On the Pi run: rclone config file
+      # Then set RCLONE_CONFIG_FILE in .env if your Pi user path differs
+      - ${RCLONE_CONFIG_FILE:-/home/yusefpi/.config/rclone/rclone.conf}:/config/rclone.conf:ro
     restart: unless-stopped
