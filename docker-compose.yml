@@ -6,9 +6,15 @@ services:
       - "4000:4000"
     environment:
       DB_PATH: /app/data/myvocab.db
+      # rclone destination: <remote>:<folder>/<file>
+      # Find yours on the Pi with: rclone lsd gdrive:  and  rclone lsd "gdrive:Your Folder"
+      # Example: gdrive:MyVocab backup/myvocab-backup.json
+      BACKUP_GDRIVE_DEST: ${BACKUP_GDRIVE_DEST:-gdrive:MyVocab backup/myvocab-backup.json}
     # Same variables as local dev (OPENAI_API_KEY, optional PORT)
     env_file:
       - backend/.env
     volumes:
       - ./data:/app/data
+      # Host rclone config (Google Drive auth). Override RCLONE_CONFIG_DIR if your Pi user is not "pi".
+      - ${RCLONE_CONFIG_DIR:-/home/pi/.config/rclone}:/root/.config/rclone:ro
     restart: unless-stopped

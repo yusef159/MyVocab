@@ -147,6 +147,7 @@ interface VocabState {
   autoSchedule: AutoScheduleConfig | null;
   autoScheduleRuns: AutoScheduleRun[];
   backupSchedule: BackupScheduleConfig | null;
+  backupDefaultDestinationPath: string;
   streakDailyGoal: number;
 
   // Stats
@@ -256,6 +257,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   autoSchedule: null,
   autoScheduleRuns: [],
   backupSchedule: null,
+  backupDefaultDestinationPath: 'gdrive:MyVocab backup/myvocab-backup.json',
   streakDailyGoal: 20,
   stats: { total: 0, known: 0, problem: 0, new: 0 },
   streak: null,
@@ -391,8 +393,8 @@ export const useVocabStore = create<VocabState>((set, get) => ({
 
   loadBackupSchedule: async () => {
     try {
-      const backupSchedule = await dbGetBackupScheduleConfig();
-      set({ backupSchedule, error: null });
+      const { schedule, defaultDestinationPath } = await dbGetBackupScheduleConfig();
+      set({ backupSchedule: schedule, backupDefaultDestinationPath: defaultDestinationPath, error: null });
     } catch (error) {
       console.error('Failed to load backup schedule:', error);
       set({ error: 'Failed to load backup schedule' });

@@ -30,6 +30,9 @@ RUN cd backend && npm ci --omit=dev
 
 COPY --from=backend-build /app/backend/dist ./backend/dist
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends rclone ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/data
 
 EXPOSE 4000

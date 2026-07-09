@@ -22,6 +22,7 @@ function formatRunDate(value?: string): string {
 export default function Settings() {
   const {
     backupSchedule,
+    backupDefaultDestinationPath,
     error,
     loadBackupSchedule,
     loadStreakDailyGoal,
@@ -38,7 +39,7 @@ export default function Settings() {
   const [dayOfWeek, setDayOfWeek] = useState(0);
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  const [destinationPath, setDestinationPath] = useState('gdrive:Raspberry Pi/MyVocab/myvocab-backup.json');
+  const [destinationPath, setDestinationPath] = useState('');
   const [expandedPanel, setExpandedPanel] = useState<'backup' | null>('backup');
   const [isSaving, setIsSaving] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -53,15 +54,20 @@ export default function Settings() {
   }, [loadBackupSchedule, loadStreakDailyGoal]);
 
   useEffect(() => {
-    if (!backupSchedule) return;
-    setEnabled(backupSchedule.active);
-    setCadence(backupSchedule.cadence);
-    setTimeOfDay(backupSchedule.timeOfDay);
-    setDayOfWeek(backupSchedule.dayOfWeek ?? 0);
-    setDayOfMonth(backupSchedule.dayOfMonth ?? 1);
-    setTimezone(backupSchedule.timezone);
-    setDestinationPath(backupSchedule.destinationPath);
-  }, [backupSchedule]);
+    if (backupSchedule) {
+      setEnabled(backupSchedule.active);
+      setCadence(backupSchedule.cadence);
+      setTimeOfDay(backupSchedule.timeOfDay);
+      setDayOfWeek(backupSchedule.dayOfWeek ?? 0);
+      setDayOfMonth(backupSchedule.dayOfMonth ?? 1);
+      setTimezone(backupSchedule.timezone);
+      setDestinationPath(backupSchedule.destinationPath);
+      return;
+    }
+    if (backupDefaultDestinationPath) {
+      setDestinationPath(backupDefaultDestinationPath);
+    }
+  }, [backupSchedule, backupDefaultDestinationPath]);
 
   useEffect(() => {
     if (!message) return;
@@ -217,10 +223,13 @@ export default function Settings() {
                 type="text"
                 value={destinationPath}
                 onChange={(e) => setDestinationPath(e.target.value)}
-                placeholder="gdrive:Raspberry Pi/MyVocab/myvocab-backup.json"
+                placeholder="gdrive:MyVocab backup/myvocab-backup.json"
                 className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
               />
-              <p className="mt-1 text-xs text-gray-500">Example: gdrive:Raspberry Pi/MyVocab/myvocab-backup.json</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Format: <span className="font-mono">gdrive:Folder/subfolder/file.json</span> — use the same path as{' '}
+                <span className="font-mono">rclone lsd gdrive:</span> on your Pi.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

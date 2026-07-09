@@ -19,7 +19,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEZONE = 'UTC';
 const DEFAULT_TIME_OF_DAY = '03:00';
 const SCHEDULER_TICK_MS = 60_000;
-const DEFAULT_GDRIVE_DESTINATION = 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json';
+const DEFAULT_GDRIVE_DESTINATION = 'gdrive:MyVocab backup/myvocab-backup.json';
 
 let schedulerTimer: NodeJS.Timeout | null = null;
 const runningScheduleIds = new Set<string>();
@@ -28,7 +28,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function getBackupDestinationFallback(): string {
+export function getBackupDestinationFallback(): string {
   return process.env.BACKUP_GDRIVE_DEST?.trim() || DEFAULT_GDRIVE_DESTINATION;
 }
 

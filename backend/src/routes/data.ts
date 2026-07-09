@@ -33,7 +33,7 @@ import {
   type AppStateKey,
   type FlashcardSessionSnapshot,
 } from '../db/index.js';
-import { runBackupNow, saveBackupSchedule, toggleBackupSchedule } from '../services/autoBackupScheduler.js';
+import { getBackupDestinationFallback, runBackupNow, saveBackupSchedule, toggleBackupSchedule } from '../services/autoBackupScheduler.js';
 
 const router = Router();
 
@@ -332,7 +332,10 @@ router.get('/backup/export', (_req, res) => {
 });
 
 router.get('/backup/schedule', (_req, res) => {
-  res.json({ schedule: getBackupScheduleConfig() });
+  res.json({
+    schedule: getBackupScheduleConfig(),
+    defaultDestinationPath: getBackupDestinationFallback(),
+  });
 });
 
 router.post('/backup/schedule', (req, res) => {

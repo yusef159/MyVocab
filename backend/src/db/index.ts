@@ -273,7 +273,7 @@ function toBackupScheduleConfig(row: Record<string, unknown>): BackupScheduleCon
     timeOfDay: String(row.time_of_day ?? '03:00'),
     dayOfWeek: row.day_of_week == null ? undefined : Number(row.day_of_week),
     dayOfMonth: row.day_of_month == null ? undefined : Number(row.day_of_month),
-    destinationPath: String(row.destination_path ?? 'gdrive:Raspberry Pi/MyVocab/myvocab-backup.json'),
+    destinationPath: String(row.destination_path ?? 'gdrive:MyVocab backup/myvocab-backup.json'),
     nextRunAt: String(row.next_run_at),
     active: Number(row.active ?? 0) === 1,
     createdAt: String(row.created_at),

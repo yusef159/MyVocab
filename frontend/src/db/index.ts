@@ -263,9 +263,18 @@ export async function getAutoScheduleRuns(limit = 20): Promise<AutoScheduleRun[]
   return res.data.runs;
 }
 
-export async function getBackupScheduleConfig(): Promise<BackupScheduleConfig | null> {
-  const res = await axios.get<{ schedule: BackupScheduleConfig | null }>(`${API_URL}/api/data/backup/schedule`);
-  return res.data.schedule;
+export async function getBackupScheduleConfig(): Promise<{
+  schedule: BackupScheduleConfig | null;
+  defaultDestinationPath: string;
+}> {
+  const res = await axios.get<{
+    schedule: BackupScheduleConfig | null;
+    defaultDestinationPath: string;
+  }>(`${API_URL}/api/data/backup/schedule`);
+  return {
+    schedule: res.data.schedule,
+    defaultDestinationPath: res.data.defaultDestinationPath,
+  };
 }
 
 export async function saveBackupScheduleConfig(payload: {
