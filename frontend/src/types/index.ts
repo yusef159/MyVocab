@@ -93,6 +93,21 @@ export interface BackupScheduleConfig {
   updatedAt: string;
 }
 
+export type BackupRunTrigger = 'manual' | 'scheduled';
+
+export interface BackupRunRecord {
+  status: 'success' | 'failed';
+  completedAt: string;
+  destination: string;
+  error?: string;
+  trigger: BackupRunTrigger;
+}
+
+export interface BackupRunStatus {
+  lastRun: BackupRunRecord | null;
+  lastSuccess: BackupRunRecord | null;
+}
+
 export interface GenerateWordsRequest {
   count: number;
   topic?: string;

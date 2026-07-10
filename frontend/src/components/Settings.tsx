@@ -23,6 +23,7 @@ export default function Settings() {
   const {
     backupSchedule,
     backupDefaultDestinationPath,
+    backupRunStatus,
     error,
     loadBackupSchedule,
     loadStreakDailyGoal,
@@ -138,6 +139,7 @@ export default function Settings() {
       } else {
         setMessage(result.message ?? 'Backup failed.');
       }
+      await loadBackupSchedule();
     } finally {
       setIsBackingUp(false);
     }
@@ -217,6 +219,26 @@ export default function Settings() {
               </div>
             )}
 
+            {(backupRunStatus.lastSuccess || backupRunStatus.lastRun?.status === 'failed') && (
+              <div className="space-y-2 rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+                {backupRunStatus.lastSuccess && (
+                  <p className="text-sm text-emerald-300">
+                    Last successful backup: {formatRunDate(backupRunStatus.lastSuccess.completedAt)}
+                    {' → '}
+                    <span className="font-mono text-emerald-400/90 break-all">
+                      {backupRunStatus.lastSuccess.destination}
+                    </span>
+                  </p>
+                )}
+                {backupRunStatus.lastRun?.status === 'failed' && (
+                  <p className="text-sm text-red-300 break-words">
+                    Last backup failed: {formatRunDate(backupRunStatus.lastRun.completedAt)}
+                    {backupRunStatus.lastRun.error ? ` — ${backupRunStatus.lastRun.error}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Google Drive backup path</label>
               <input
@@ -226,10 +248,6 @@ export default function Settings() {
                 placeholder="gdrive:MyVocab backup/myvocab-backup.json"
                 className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Format: <span className="font-mono">gdrive:Folder/subfolder/file.json</span> — use the same path as{' '}
-                <span className="font-mono">rclone lsd gdrive:</span> on your Pi.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -325,9 +343,6 @@ export default function Settings() {
                 {isBackingUp ? 'Backing up...' : 'Backup Now'}
               </button>
             </div>
-            <p className="text-xs text-gray-500">
-              &ldquo;Backup Now&rdquo; immediately exports your data and uploads it to the Google Drive path above.
-            </p>
           </div>
         )}
       </div>

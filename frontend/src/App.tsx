@@ -33,7 +33,7 @@ function App() {
             <NavLink
               to="/"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -45,7 +45,7 @@ function App() {
             <NavLink
               to="/words"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -57,7 +57,7 @@ function App() {
             <NavLink
               to="/flashcards"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -69,7 +69,7 @@ function App() {
             <NavLink
               to="/generate"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -81,7 +81,7 @@ function App() {
             <NavLink
               to="/manual"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -93,7 +93,7 @@ function App() {
             <NavLink
               to="/test"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -105,7 +105,7 @@ function App() {
             <NavLink
               to="/grammar"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -117,7 +117,7 @@ function App() {
             <NavLink
               to="/reading"
               className={({ isActive }) =>
-                `px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
+                `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive
                     ? 'bg-indigo-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700'
@@ -129,16 +129,29 @@ function App() {
             <NavLink
               to="/settings"
               className={({ isActive }) =>
-                `px-3 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center ${
+                `flex-shrink-0 min-w-[2.75rem] px-3 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center ${
                   isActive
                     ? 'bg-gray-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`
               }
               title="Settings"
               aria-label="Settings"
             >
-              <img src="/settings-icon.png" alt="" className="h-4 w-4 object-contain" aria-hidden />
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
             </NavLink>
           </div>
         </div>

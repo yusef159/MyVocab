@@ -4,6 +4,7 @@ import type {
   AutoScheduleConfig,
   AutoScheduleRun,
   BackupScheduleConfig,
+  BackupRunStatus,
   Word,
   WordSuggestion,
   StreakData,
@@ -148,6 +149,7 @@ interface VocabState {
   autoScheduleRuns: AutoScheduleRun[];
   backupSchedule: BackupScheduleConfig | null;
   backupDefaultDestinationPath: string;
+  backupRunStatus: BackupRunStatus;
   streakDailyGoal: number;
 
   // Stats
@@ -258,6 +260,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   autoScheduleRuns: [],
   backupSchedule: null,
   backupDefaultDestinationPath: 'gdrive:MyVocab backup/myvocab-backup.json',
+  backupRunStatus: { lastRun: null, lastSuccess: null },
   streakDailyGoal: 20,
   stats: { total: 0, known: 0, problem: 0, new: 0 },
   streak: null,
@@ -393,8 +396,8 @@ export const useVocabStore = create<VocabState>((set, get) => ({
 
   loadBackupSchedule: async () => {
     try {
-      const { schedule, defaultDestinationPath } = await dbGetBackupScheduleConfig();
-      set({ backupSchedule: schedule, backupDefaultDestinationPath: defaultDestinationPath, error: null });
+      const { schedule, defaultDestinationPath, backupRunStatus } = await dbGetBackupScheduleConfig();
+      set({ backupSchedule: schedule, backupDefaultDestinationPath: defaultDestinationPath, backupRunStatus, error: null });
     } catch (error) {
       console.error('Failed to load backup schedule:', error);
       set({ error: 'Failed to load backup schedule' });
@@ -448,9 +451,11 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   runBackupNow: async (destinationPath) => {
     try {
       const result = await dbRunBackupNow(destinationPath);
+      await get().loadBackupSchedule();
       set({ error: null });
       return { ok: true, destination: result.destination };
     } catch (error) {
+      await get().loadBackupSchedule();
       console.error('Failed to run backup:', error);
       const message =
         axios.isAxiosError(error) && typeof error.response?.data?.message === 'string'

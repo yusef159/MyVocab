@@ -92,6 +92,21 @@ export interface BackupScheduleConfig {
   updatedAt: string;
 }
 
+export type BackupRunTrigger = 'manual' | 'scheduled';
+
+export interface BackupRunRecord {
+  status: 'success' | 'failed';
+  completedAt: string;
+  destination: string;
+  error?: string;
+  trigger: BackupRunTrigger;
+}
+
+export interface BackupRunStatus {
+  lastRun: BackupRunRecord | null;
+  lastSuccess: BackupRunRecord | null;
+}
+
 export interface AutoScheduleRun {
   id: string;
   scheduleId: string;
@@ -143,6 +158,7 @@ const INITIAL_KNOWN_INTERVAL = 1;
 const FLASHCARD_LAST_COMPLETED_SESSION_KEY = 'flashcards:last_completed_session';
 const AUTO_SCHEDULE_DEFAULT_ID = 'main-auto-schedule';
 const BACKUP_SCHEDULE_DEFAULT_ID = 'main-backup-schedule';
+const BACKUP_RUN_STATUS_KEY = 'backup:run_status';
 
 const DB_PATH = process.env.DB_PATH || './data/myvocab.db';
 mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -652,6 +668,44 @@ export function getDueBackupScheduleConfigs(now = nowIso()): BackupScheduleConfi
     )
     .all(now) as Record<string, unknown>[];
   return rows.map(toBackupScheduleConfig);
+}
+
+function readAppStateValue<T>(key: string): T | null {
+  const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(key) as { value: string } | undefined;
+  if (!row?.value) return null;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeAppStateValue(key: string, value: unknown): void {
+  db.prepare(
+    `INSERT INTO app_state (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`
+  ).run(key, JSON.stringify(value ?? null), nowIso());
+}
+
+export function getBackupRunStatus(): BackupRunStatus {
+  const stored = readAppStateValue<BackupRunStatus>(BACKUP_RUN_STATUS_KEY);
+  return {
+    lastRun: stored?.lastRun ?? null,
+    lastSuccess: stored?.lastSuccess ?? null,
+  };
+}
+
+export function recordBackupRun(record: BackupRunRecord): BackupRunStatus {
+  const current = getBackupRunStatus();
+  const next: BackupRunStatus = {
+    lastRun: record,
+    lastSuccess: record.status === 'success' ? record : current.lastSuccess,
+  };
+  writeAppStateValue(BACKUP_RUN_STATUS_KEY, next);
+  return next;
 }
 
 export function saveFlashcardLastCompletedSession(session: FlashcardSessionSnapshot): void {

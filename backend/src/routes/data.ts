@@ -7,6 +7,7 @@ import {
   exportFullBackup,
   getAllGrammarProgress,
   getBackupScheduleConfig,
+  getBackupRunStatus,
   getAllWords,
   getAppStateJson,
   getEarliestReviewDate,
@@ -335,6 +336,7 @@ router.get('/backup/schedule', (_req, res) => {
   res.json({
     schedule: getBackupScheduleConfig(),
     defaultDestinationPath: getBackupDestinationFallback(),
+    backupRunStatus: getBackupRunStatus(),
   });
 });
 

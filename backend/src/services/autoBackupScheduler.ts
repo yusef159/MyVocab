@@ -7,6 +7,7 @@ import {
   exportFullBackup,
   getBackupScheduleConfig,
   getDueBackupScheduleConfigs,
+  recordBackupRun,
   saveBackupScheduleConfig,
   setBackupScheduleActive,
   updateBackupScheduleNextRun,
@@ -32,6 +33,11 @@ export function getBackupDestinationFallback(): string {
   return process.env.BACKUP_GDRIVE_DEST?.trim() || DEFAULT_GDRIVE_DESTINATION;
 }
 
+function formatBackupError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Unknown error';
+}
+
 async function performBackup(destination: string): Promise<void> {
   const tempFilePath = path.join(tmpdir(), `myvocab-backup-${Date.now()}.json`);
 
@@ -55,10 +61,24 @@ async function runSchedule(config: BackupScheduleConfig): Promise<void> {
   runningScheduleIds.add(config.id);
 
   const destination = config.destinationPath?.trim() || getBackupDestinationFallback();
+  const completedAt = nowIso();
 
   try {
     await performBackup(destination);
+    recordBackupRun({
+      status: 'success',
+      completedAt,
+      destination,
+      trigger: 'scheduled',
+    });
   } catch (error) {
+    recordBackupRun({
+      status: 'failed',
+      completedAt,
+      destination,
+      error: formatBackupError(error),
+      trigger: 'scheduled',
+    });
     console.error('Auto backup run failed:', error);
   } finally {
     const nextRunAt = computeNextRunAt(config, new Date());
@@ -74,10 +94,27 @@ export async function runBackupNow(
     destinationPath?.trim() ||
     getBackupScheduleConfig()?.destinationPath?.trim() ||
     getBackupDestinationFallback();
+  const completedAt = nowIso();
 
-  await performBackup(destination);
-
-  return { destination, completedAt: nowIso() };
+  try {
+    await performBackup(destination);
+    recordBackupRun({
+      status: 'success',
+      completedAt,
+      destination,
+      trigger: 'manual',
+    });
+    return { destination, completedAt };
+  } catch (error) {
+    recordBackupRun({
+      status: 'failed',
+      completedAt,
+      destination,
+      error: formatBackupError(error),
+      trigger: 'manual',
+    });
+    throw error;
+  }
 }
 
 export function saveBackupSchedule(input: {

@@ -4,6 +4,7 @@ import type {
   AutoScheduleConfig,
   AutoScheduleRun,
   BackupScheduleConfig,
+  BackupRunStatus,
   GrammarProgress,
   RiskWord,
   StreakData,
@@ -266,14 +267,17 @@ export async function getAutoScheduleRuns(limit = 20): Promise<AutoScheduleRun[]
 export async function getBackupScheduleConfig(): Promise<{
   schedule: BackupScheduleConfig | null;
   defaultDestinationPath: string;
+  backupRunStatus: BackupRunStatus;
 }> {
   const res = await axios.get<{
     schedule: BackupScheduleConfig | null;
     defaultDestinationPath: string;
+    backupRunStatus: BackupRunStatus;
   }>(`${API_URL}/api/data/backup/schedule`);
   return {
     schedule: res.data.schedule,
     defaultDestinationPath: res.data.defaultDestinationPath,
+    backupRunStatus: res.data.backupRunStatus ?? { lastRun: null, lastSuccess: null },
   };
 }
 
