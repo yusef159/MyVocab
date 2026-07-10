@@ -182,6 +182,11 @@ function normalizeSentences(input: string[]): string[] {
   return out.length ? out : [''];
 }
 
+/** Normalize English headwords to all lowercase */
+function normalizeEnglishWord(english: string): string {
+  return String(english ?? '').trim().toLowerCase();
+}
+
 function isAutoScheduleCadence(value: unknown): value is AutoScheduleCadence {
   return value === 'daily' || value === 'weekly' || value === 'monthly';
 }
@@ -230,7 +235,7 @@ function normalizeFlashcardSessionSnapshot(input: unknown): FlashcardSessionSnap
 function toWord(row: Record<string, unknown>): Word {
   return {
     id: String(row.id),
-    english: String(row.english),
+    english: normalizeEnglishWord(String(row.english)),
     arabicMeanings: parseJsonArray(String(row.arabic_meanings ?? '[]')),
     exampleSentences: normalizeSentences(parseJsonArray(String(row.example_sentences ?? '[]'))),
     englishMeaning: row.english_meaning ? String(row.english_meaning) : undefined,
@@ -474,6 +479,20 @@ export function initDatabase(): void {
   );
   if (!hasEnglishMeaning) {
     db.exec('ALTER TABLE words ADD COLUMN english_meaning TEXT');
+  }
+
+  backfillEnglishWordLowercase();
+}
+
+/** Runs on every startup; only updates rows that are not already lowercase */
+function backfillEnglishWordLowercase(): void {
+  const rows = db.prepare('SELECT id, english FROM words').all() as Array<{ id: string; english: string }>;
+  const update = db.prepare('UPDATE words SET english = ? WHERE id = ?');
+  for (const row of rows) {
+    const normalized = normalizeEnglishWord(row.english);
+    if (normalized !== row.english) {
+      update.run(normalized, row.id);
+    }
   }
 }
 
@@ -779,7 +798,8 @@ export function getAppStateJson<T = unknown>(key: AppStateKey): T | null {
 }
 
 export function wordExists(english: string): boolean {
-  const row = db.prepare('SELECT 1 FROM words WHERE lower(english) = lower(?) LIMIT 1').get(english);
+  const normalized = normalizeEnglishWord(english);
+  const row = db.prepare('SELECT 1 FROM words WHERE lower(english) = lower(?) LIMIT 1').get(normalized);
   return Boolean(row);
 }
 
@@ -802,7 +822,11 @@ export function addWord(input: {
   englishMeaning?: string;
   topic?: string;
 }): { id: string | null; isDuplicate: boolean } {
-  if (wordExists(input.english)) {
+  const english = normalizeEnglishWord(input.english);
+  if (!english) {
+    return { id: null, isDuplicate: false };
+  }
+  if (wordExists(english)) {
     return { id: null, isDuplicate: true };
   }
 
@@ -815,7 +839,7 @@ export function addWord(input: {
     ) VALUES (?, ?, ?, ?, ?, ?, 'new', 0, 0, 0, 0, ?, NULL)
   `).run(
     id,
-    input.english.trim(),
+    english,
     JSON.stringify(input.arabicMeanings ?? []),
     JSON.stringify(normalizeSentences(input.exampleSentences ?? [])),
     englishMeaning,
@@ -1063,15 +1087,16 @@ export function bulkAddWords(
   let added = 0;
   const tx = db.transaction(() => {
     for (const word of words) {
-      const lower = word.english.toLowerCase();
-      if (existingSet.has(lower) || seenInImport.has(lower)) {
+      const english = normalizeEnglishWord(word.english);
+      const lower = english.toLowerCase();
+      if (!english || existingSet.has(lower) || seenInImport.has(lower)) {
         skippedWords.push(word.english);
         continue;
       }
       seenInImport.add(lower);
       insertStmt.run(
         randomUUID(),
-        word.english,
+        english,
         JSON.stringify(word.arabicMeanings ?? []),
         JSON.stringify(normalizeSentences(word.exampleSentences ?? [])),
         word.englishMeaning?.trim() || null,
@@ -1322,7 +1347,7 @@ export function importFullBackup(payload: BackupPayloadV1): {
     for (const word of payload.words) {
       insertWord.run(
         word.id,
-        word.english,
+        normalizeEnglishWord(word.english),
         JSON.stringify(word.arabicMeanings ?? []),
         JSON.stringify(normalizeSentences(word.exampleSentences ?? [])),
         word.englishMeaning?.trim() || null,

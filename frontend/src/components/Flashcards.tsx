@@ -221,9 +221,9 @@ export default function Flashcards() {
   const [showStreakMessage, setShowStreakMessage] = useState(false);
   const [previousReviewsToday, setPreviousReviewsToday] = useState<number | null>(null);
 
-  // Audio state: word auto-speak, and sentence speak (separate, default muted)
+  // Audio state: word auto-speak, sentence auto-speak (toggle via back-card icon)
   const [isMuted, setIsMuted] = useState(false);
-  const [isSentenceMuted, setIsSentenceMuted] = useState(true);
+  const [isSentenceAutoSpeak, setIsSentenceAutoSpeak] = useState(false);
   const lastSpokenWordRef = useRef<string | null>(null);
   const lastSpokenSentenceRef = useRef<string | null>(null);
   const touchStartXRef = useRef(0);
@@ -392,19 +392,24 @@ export default function Flashcards() {
     speakText(word.english);
   }, [currentIndex, sessionStarted, sessionComplete, isMuted, shuffledWords]);
 
-  // Auto-speak first sentence when card is flipped (if sentence speak not muted),
-  // but avoid speaking the same card's sentence twice automatically.
+  // Auto-speak sentence when card is flipped (if sentence auto-speak is on)
   useEffect(() => {
     const word = shuffledWords[currentIndex];
     const firstSentence = word?.exampleSentences?.filter(Boolean)[0];
-    if (!isFlipped || !firstSentence || !sessionStarted || sessionComplete || isSentenceMuted) return;
+    if (!isFlipped || !firstSentence || !sessionStarted || sessionComplete || !isSentenceAutoSpeak) return;
 
     const key = `${word.id}-${currentIndex}`;
     if (lastSpokenSentenceRef.current === key) return;
 
     lastSpokenSentenceRef.current = key;
     speakText(firstSentence);
-  }, [isFlipped, currentIndex, shuffledWords, sessionStarted, sessionComplete, isSentenceMuted]);
+  }, [isFlipped, currentIndex, shuffledWords, sessionStarted, sessionComplete, isSentenceAutoSpeak]);
+
+  useEffect(() => {
+    if (!isFlipped) {
+      lastSpokenSentenceRef.current = null;
+    }
+  }, [isFlipped]);
 
   // Calculate word counts for each filter option
   const filterCounts = useMemo(() => {
@@ -1585,19 +1590,12 @@ export default function Flashcards() {
 
   const handleSpeakSentence = () => {
     const firstSentence = currentWord?.exampleSentences?.filter(Boolean)[0];
-    if (firstSentence && !isSentenceMuted) {
-      speakText(firstSentence);
-    }
+    if (firstSentence) speakText(firstSentence);
   };
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
     if (!isMuted) speechSynthesis.cancel();
-  };
-
-  const toggleSentenceMute = () => {
-    setIsSentenceMuted(prev => !prev);
-    if (!isSentenceMuted) speechSynthesis.cancel();
   };
 
   return (
@@ -1749,92 +1747,109 @@ export default function Flashcards() {
           >
           {/* Front */}
           <div
-            className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 flex items-center justify-center backface-hidden"
+            className="absolute inset-0 h-full w-full bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 overflow-hidden backface-hidden"
             style={{ backfaceVisibility: 'hidden' }}
           >
-            <div className="text-center p-8">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <p className="text-3xl sm:text-4xl font-bold text-white break-words">
-                  {currentWord?.english}
-                </p>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSpeakWord();
-                  }}
-                  className="p-2 rounded-full bg-gray-700 hover:bg-emerald-600 text-gray-300 hover:text-white transition-colors"
-                  title="Listen to word"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  </svg>
-                </button>
+            <div className="relative flex h-full w-full flex-col">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSpeakWord();
+                }}
+                className="absolute bottom-3 right-3 z-10 p-2 rounded-full bg-gray-800/80 text-gray-300 hover:bg-emerald-600 hover:text-white transition-colors"
+                title="Listen to word"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+              </button>
+
+              <div className="flex flex-1 items-center justify-center p-5 sm:p-6">
+                <div className="text-center">
+                  <p className="text-3xl sm:text-4xl font-bold text-white break-words mb-4">
+                    {currentWord?.english}
+                  </p>
+                  <p className="text-gray-500 text-sm">Click to reveal</p>
+                </div>
               </div>
-              <p className="text-gray-500 text-sm">Click to reveal</p>
             </div>
           </div>
 
           {/* Back */}
           <div
-            className="absolute inset-0 bg-gradient-to-br from-emerald-900/50 to-gray-900 rounded-2xl border border-emerald-500/30 flex items-center justify-center backface-hidden"
+            className="absolute inset-0 h-full w-full bg-gradient-to-br from-emerald-900/50 to-gray-900 rounded-2xl border border-emerald-500/30 overflow-hidden backface-hidden"
             style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
             }}
           >
-            <div className="text-center p-8">
-              <div className="mb-6" dir="rtl">
+            <div className="relative flex h-full w-full flex-col">
+              {/* Sentence auto-speak toggle — corner icon */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsSentenceAutoSpeak((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      const firstSentence = currentWord?.exampleSentences?.filter(Boolean)[0];
+                      if (firstSentence) {
+                        lastSpokenSentenceRef.current = `${currentWord?.id}-${currentIndex}`;
+                        speakText(firstSentence);
+                      }
+                    } else {
+                      speechSynthesis.cancel();
+                    }
+                    return next;
+                  });
+                }}
+                className={`absolute bottom-3 right-3 z-10 p-2 rounded-full transition-colors ${
+                  isSentenceAutoSpeak
+                    ? 'bg-amber-600/30 text-amber-400 hover:bg-amber-600/50'
+                    : 'bg-gray-800/80 text-gray-300 hover:bg-amber-600 hover:text-white'
+                }`}
+                title={isSentenceAutoSpeak ? 'Turn off sentence auto-speak' : 'Turn on sentence auto-speak'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+              </button>
+
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:gap-5 w-full max-w-lg mx-auto p-5 sm:p-6 overflow-y-auto min-h-0">
+              {/* 1. Arabic meanings — centered */}
+              <div className="w-full text-center space-y-1.5">
                 {currentWord?.arabicMeanings.map((meaning, i) => (
-                  <p key={i} className="text-xl sm:text-2xl font-bold text-white mb-2">
-                    {meaning}
+                  <p key={i} className="text-xl sm:text-2xl font-bold text-white leading-relaxed">
+                    <span dir="rtl" className="inline-block">
+                      {meaning}
+                    </span>
                   </p>
                 ))}
               </div>
-              <div className="text-gray-300 text-base sm:text-lg italic mb-4 space-y-2">
+
+              {/* 2. Example sentences */}
+              <div className="w-full text-center space-y-2">
                 {(currentWord?.exampleSentences ?? []).filter(Boolean).map((sent, i) => (
-                  <p key={i}>
+                  <p key={i} className="text-gray-300 text-base sm:text-lg italic leading-relaxed px-1">
                     &quot;{currentWord?.english
                       ? highlightWordInSentence(sent, currentWord.english)
                       : sent}&quot;
                   </p>
                 ))}
-                {(!currentWord?.exampleSentences || currentWord.exampleSentences.every(s => !s?.trim())) && <p className="text-gray-500">—</p>}
-              </div>
-              {/* Sentence speak: mute/unmute and play (inside card) */}
-              <div className="flex items-center justify-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
-                <button
-                  onClick={toggleSentenceMute}
-                  className={`p-2 rounded-full transition-colors ${
-                    isSentenceMuted
-                      ? 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                      : 'bg-amber-600/20 text-amber-400 hover:bg-amber-600/30'
-                  }`}
-                  title={isSentenceMuted ? 'Enable sentence auto-speak' : 'Mute sentence auto-speak'}
-                >
-                  {isSentenceMuted ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    </svg>
-                  )}
-                </button>
-                <span className="text-gray-500 text-sm">{isSentenceMuted ? 'Sentence speak off' : 'Sentence speak on'}</span>
-                {!isSentenceMuted && (
-                  <button
-                    onClick={handleSpeakSentence}
-                    className="p-2 rounded-full bg-gray-700 hover:bg-amber-600 text-gray-300 hover:text-white transition-colors"
-                    title="Play sentence again"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
+                {(!currentWord?.exampleSentences || currentWord.exampleSentences.every(s => !s?.trim())) && (
+                  <p className="text-gray-500 italic">—</p>
                 )}
+              </div>
+
+              {/* 3. English meaning — at the bottom */}
+              {currentWord?.englishMeaning?.trim() && (
+                <div className="w-full text-center pt-4 border-t border-emerald-500/25">
+                  <p className="text-gray-200 text-sm sm:text-base leading-relaxed px-1">
+                    {currentWord.englishMeaning}
+                  </p>
+                </div>
+              )}
               </div>
             </div>
           </div>
