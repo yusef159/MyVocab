@@ -78,7 +78,7 @@ function getWordRiskInfo(word: Word): { value: string; tone: RiskTone } {
   };
 }
 
-type WordInfoModalMode = 'view' | 'edit' | 'suggest';
+type WordInfoModalMode = 'view' | 'edit' | 'suggest' | 'explain';
 
 interface WordInfoModalProps {
   wordId: string | null;
@@ -145,18 +145,24 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   const {
     updateWordContent,
     suggestMeanings,
+    explainWord,
     clearSuggestions,
+    clearEnglishExplanation,
     updateWordReviewCounts,
     getWordReviewHistory,
   } = useVocabStore();
   const suggestions = useVocabStore((s) => s.suggestions);
   const isSuggestingLoading = useVocabStore((s) => s.isSuggestingLoading);
+  const englishExplanationOptions = useVocabStore((s) => s.englishExplanationOptions);
+  const isExplainingLoading = useVocabStore((s) => s.isExplainingLoading);
+  const problemStreakGoal = useVocabStore((s) => s.problemStreakGoal);
 
   const [mode, setMode] = useState<WordInfoModalMode>('view');
   const [editMeanings, setEditMeanings] = useState<string[]>([]);
   const [editSentences, setEditSentences] = useState<string[]>(['', '', '']);
   const [selectedMeaningIndices, setSelectedMeaningIndices] = useState<number[]>([]);
   const [selectedSentenceIndices, setSelectedSentenceIndices] = useState<Set<number>>(new Set());
+  const [selectedExplainIndex, setSelectedExplainIndex] = useState<number | null>(null);
   const [isEditingCounts, setIsEditingCounts] = useState(false);
   const [editCorrectCount, setEditCorrectCount] = useState(0);
   const [editWrongCount, setEditWrongCount] = useState(0);
@@ -206,12 +212,38 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
     if (mode !== 'suggest') clearSuggestions();
   }, [mode, clearSuggestions]);
 
+  useEffect(() => {
+    if (mode !== 'explain') clearEnglishExplanation();
+  }, [mode, clearEnglishExplanation]);
+
   const handleGetSuggestions = async () => {
     if (!word) return;
     setMode('suggest');
     setSelectedMeaningIndices([]);
     setSelectedSentenceIndices(new Set());
     await suggestMeanings(word.english);
+  };
+
+  const handleExplainWord = async () => {
+    if (!word) return;
+    setMode('explain');
+    setSelectedExplainIndex(null);
+    await explainWord(word.english);
+  };
+
+  useEffect(() => {
+    if (mode === 'explain' && englishExplanationOptions.length === 1 && selectedExplainIndex === null) {
+      setSelectedExplainIndex(0);
+    }
+  }, [mode, englishExplanationOptions, selectedExplainIndex]);
+
+  const handleSaveEnglishMeaning = async () => {
+    if (!word || selectedExplainIndex === null) return;
+    const meaning = englishExplanationOptions[selectedExplainIndex];
+    if (!meaning) return;
+    await updateWordContent(word.id, undefined, undefined, meaning);
+    setMode('view');
+    clearEnglishExplanation();
   };
 
   useEffect(() => {
@@ -561,6 +593,61 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
           </div>
         )}
 
+        {mode === 'explain' && (
+          <div className="mb-6">
+            {isExplainingLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <svg className="animate-spin h-8 w-8 text-amber-500" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            ) : englishExplanationOptions.length > 0 ? (
+              <>
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">
+                  Choose the explanation you understand best
+                </p>
+                <div className="space-y-2 mb-4">
+                  {englishExplanationOptions.map((option, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedExplainIndex(i)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all flex items-center justify-between ${
+                        selectedExplainIndex === i
+                          ? 'border-amber-500 bg-amber-500/20 text-white'
+                          : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
+                      }`}
+                    >
+                      <span className="text-sm">{option}</span>
+                      {selectedExplainIndex === i && <span className="text-amber-400">✓</span>}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setMode('view'); clearEnglishExplanation(); }}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEnglishMeaning}
+                    disabled={selectedExplainIndex === null}
+                    className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-400 py-4">No explanations. Try again.</p>
+            )}
+          </div>
+        )}
+
         {/* Learning Progress & review stats - show in view mode only */}
         {mode === 'view' && (
           <>
@@ -790,7 +877,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                     <p className="text-gray-400 text-xs uppercase tracking-wide">Streak</p>
                     <p className="mt-2 text-2xl font-bold text-white flex items-center gap-1">
                       <span>🔥</span>
-                      <span>{word.streak}/3</span>
+                      <span>{word.streak}/{problemStreakGoal}</span>
                     </p>
                   </div>
                 )}
@@ -802,6 +889,34 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                 )}
               </div>
             )}
+
+            <div className="mt-6 pt-6 border-t border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-gray-400 text-xs uppercase tracking-wide">English meaning</p>
+                {word.englishMeaning?.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleExplainWord}
+                    className="text-xs text-amber-400 hover:text-amber-300 hover:underline"
+                  >
+                    Change
+                  </button>
+                )}
+              </div>
+              {word.englishMeaning?.trim() ? (
+                <div className="bg-gray-700/50 rounded-lg p-3">
+                  <p className="text-white text-base">{word.englishMeaning}</p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleExplainWord}
+                  className="w-full px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition-colors text-sm font-medium"
+                >
+                  Explain with AI
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -811,7 +926,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
 
 export default function WordList() {
   const navigate = useNavigate();
-  const { words, isLoading, loadWords, removeWord, importWords, autoSchedule, loadAutoSchedule } = useVocabStore();
+  const { words, isLoading, loadWords, removeWord, importWords, autoSchedule, loadAutoSchedule, loadProblemStreakGoal, problemStreakGoal } = useVocabStore();
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
@@ -1009,7 +1124,8 @@ export default function WordList() {
 
   useEffect(() => {
     loadWords();
-  }, [loadWords]);
+    void loadProblemStreakGoal();
+  }, [loadWords, loadProblemStreakGoal]);
 
   useEffect(() => {
     void loadAutoSchedule();
@@ -1501,7 +1617,7 @@ export default function WordList() {
                     </span>
                     {/* Fire Streak Icon - only show for problem words with streak > 0 */}
                     {word.status === 'problem' && (word.streak || 0) > 0 && (
-                      <div className="flex items-center gap-1" title={`Streak: ${word.streak}/3`}>
+                      <div className="flex items-center gap-1" title={`Streak: ${word.streak}/${problemStreakGoal}`}>
                         <span className="text-lg">🔥</span>
                         <span className="text-orange-500 font-bold text-sm">{word.streak}</span>
                       </div>

@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import {
   autoScheduleWordsPrompt,
+  explainWordPrompt,
   generateWordsPrompt,
   suggestMeaningsPrompt,
   type WordLevel,
@@ -24,6 +25,10 @@ export interface WordSuggestion {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+}
+
+export interface EnglishExplanationResult {
+  options: string[];
 }
 
 function parseWordSuggestions(content: string): WordSuggestion[] {
@@ -108,6 +113,41 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
     return suggestions[0];
   } catch (error) {
     console.error('Failed to parse OpenAI response:', content);
+    throw new Error('Failed to parse AI response');
+  }
+}
+
+export async function suggestEnglishExplanation(word: string): Promise<EnglishExplanationResult> {
+  const prompt = explainWordPrompt(word);
+  const openai = getOpenAIClient();
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4.1-nano',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.5,
+    max_tokens: 300,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error('No response from OpenAI');
+  }
+
+  try {
+    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(raw) as { options?: unknown };
+    const options = (Array.isArray(parsed.options) ? parsed.options : [])
+      .map((value) => String(value).trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    if (options.length === 0) {
+      throw new Error('No explanation options found');
+    }
+
+    return { options };
+  } catch (error) {
+    console.error('Failed to parse OpenAI explanation response:', content);
     throw new Error('Failed to parse AI response');
   }
 }

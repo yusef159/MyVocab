@@ -19,6 +19,7 @@ import {
   getAutoScheduleRuns as dbGetAutoScheduleRuns,
   getBackupScheduleConfig as dbGetBackupScheduleConfig,
   getStreakDailyGoal as dbGetStreakDailyGoal,
+  getProblemStreakGoal as dbGetProblemStreakGoal,
   getWordsByStatus,
   addWord,
   incrementWrongCount,
@@ -36,6 +37,7 @@ import {
   saveAutoScheduleConfig as dbSaveAutoScheduleConfig,
   saveBackupScheduleConfig as dbSaveBackupScheduleConfig,
   saveStreakDailyGoal as dbSaveStreakDailyGoal,
+  saveProblemStreakGoal as dbSaveProblemStreakGoal,
   setAutoScheduleActive as dbSetAutoScheduleActive,
   setBackupScheduleActive as dbSetBackupScheduleActive,
   runBackupNow as dbRunBackupNow,
@@ -46,7 +48,7 @@ const API_URL = '';
 const MAX_READING_ARTICLE_WORDS = 120;
 
 function applyLocalReviewUpdate(
-  state: Pick<VocabState, 'words' | 'stats' | 'streak'>,
+  state: Pick<VocabState, 'words' | 'stats' | 'streak' | 'problemStreakGoal'>,
   id: string,
   result: 'known' | 'problem'
 ): Pick<VocabState, 'words' | 'stats' | 'streak'> {
@@ -78,7 +80,7 @@ function applyLocalReviewUpdate(
       nextInterval = 1;
     } else if (word.status === 'problem') {
       nextStreak = word.streak + 1;
-      if (nextStreak >= 3) {
+      if (nextStreak >= state.problemStreakGoal) {
         nextStatus = 'known';
         nextStreak = 0;
         nextInterval = Math.max(1, word.interval);
@@ -145,12 +147,15 @@ interface VocabState {
   // Suggestions from AI
   suggestions: WordSuggestion[];
   isSuggestingLoading: boolean;
+  englishExplanationOptions: string[];
+  isExplainingLoading: boolean;
   autoSchedule: AutoScheduleConfig | null;
   autoScheduleRuns: AutoScheduleRun[];
   backupSchedule: BackupScheduleConfig | null;
   backupDefaultDestinationPath: string;
   backupRunStatus: BackupRunStatus;
   streakDailyGoal: number;
+  problemStreakGoal: number;
 
   // Stats
   stats: {
@@ -172,7 +177,9 @@ interface VocabState {
   
   generateWords: (count: number, topic?: string, level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2') => Promise<void>;
   suggestMeanings: (word: string) => Promise<void>;
+  explainWord: (word: string) => Promise<void>;
   clearSuggestions: () => void;
+  clearEnglishExplanation: () => void;
   loadAutoSchedule: () => Promise<void>;
   saveAutoSchedule: (payload: {
     prompt: string;
@@ -189,6 +196,8 @@ interface VocabState {
   loadBackupSchedule: () => Promise<void>;
   loadStreakDailyGoal: () => Promise<void>;
   saveStreakDailyGoal: (goal: number) => Promise<boolean>;
+  loadProblemStreakGoal: () => Promise<void>;
+  saveProblemStreakGoal: (goal: number) => Promise<boolean>;
   saveBackupSchedule: (payload: {
     cadence: 'daily' | 'weekly' | 'monthly';
     timezone: string;
@@ -205,7 +214,8 @@ interface VocabState {
     english: string,
     arabicMeanings: string[],
     exampleSentences: string[],
-    topic?: string
+    topic?: string,
+    englishMeaning?: string
   ) => Promise<{ success: boolean; isDuplicate: boolean }>;
   
   markAsKnown: (id: string) => Promise<void>;
@@ -213,7 +223,12 @@ interface VocabState {
   markProblemAsKnown: (id: string) => Promise<void>;
   markProblemAsStillProblem: (id: string) => Promise<void>;
   removeWord: (id: string) => Promise<void>;
-  updateWordContent: (id: string, arabicMeanings: string[], exampleSentences: string[]) => Promise<void>;
+  updateWordContent: (
+    id: string,
+    arabicMeanings?: string[],
+    exampleSentences?: string[],
+    englishMeaning?: string | null
+  ) => Promise<void>;
   importWords: (words: Array<{ english: string; arabicMeanings: string[]; exampleSentences: string[] }>) => Promise<{ added: number; skipped: number; skippedWords: string[] }>;
   updateWordReviewCounts: (id: string, correctCount: number, wrongCount: number) => Promise<void>;
   getWordReviewHistory: (wordId: string) => Promise<WordReviewEvent[]>;
@@ -256,12 +271,15 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   error: null,
   suggestions: [],
   isSuggestingLoading: false,
+  englishExplanationOptions: [],
+  isExplainingLoading: false,
   autoSchedule: null,
   autoScheduleRuns: [],
   backupSchedule: null,
   backupDefaultDestinationPath: 'gdrive:MyVocab backup/myvocab-backup.json',
   backupRunStatus: { lastRun: null, lastSuccess: null },
   streakDailyGoal: 20,
+  problemStreakGoal: 3,
   stats: { total: 0, known: 0, problem: 0, new: 0 },
   streak: null,
   reviewCounts: [],
@@ -347,8 +365,22 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
+  explainWord: async (word) => {
+    set({ isExplainingLoading: true, error: null, englishExplanationOptions: [] });
+    try {
+      const response = await axios.post<{ options: string[] }>(`${API_URL}/api/words/explain`, { word });
+      set({ englishExplanationOptions: response.data.options ?? [], isExplainingLoading: false });
+    } catch (error) {
+      set({ error: 'Failed to explain word', isExplainingLoading: false });
+    }
+  },
+
   clearSuggestions: () => {
     set({ suggestions: [], error: null });
+  },
+
+  clearEnglishExplanation: () => {
+    set({ englishExplanationOptions: [], error: null });
   },
 
   loadAutoSchedule: async () => {
@@ -426,6 +458,28 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
+  loadProblemStreakGoal: async () => {
+    try {
+      const problemStreakGoal = await dbGetProblemStreakGoal();
+      set({ problemStreakGoal, error: null });
+    } catch (error) {
+      console.error('Failed to load problem streak goal:', error);
+      set({ error: 'Failed to load problem streak goal' });
+    }
+  },
+
+  saveProblemStreakGoal: async (goal) => {
+    try {
+      const problemStreakGoal = await dbSaveProblemStreakGoal(goal);
+      set({ problemStreakGoal, error: null });
+      return true;
+    } catch (error) {
+      console.error('Failed to save problem streak goal:', error);
+      set({ error: 'Failed to save problem streak goal' });
+      return false;
+    }
+  },
+
   saveBackupSchedule: async (payload) => {
     try {
       const backupSchedule = await dbSaveBackupScheduleConfig(payload);
@@ -466,9 +520,16 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  saveWord: async (english, arabicMeanings, exampleSentences, topic) => {
+  saveWord: async (english, arabicMeanings, exampleSentences, topic, englishMeaning) => {
     try {
-      const result = await addWord({ english, arabicMeanings, exampleSentences, topic });
+      const trimmedMeaning = englishMeaning?.trim();
+      const result = await addWord({
+        english,
+        arabicMeanings,
+        exampleSentences,
+        topic,
+        englishMeaning: trimmedMeaning || undefined,
+      });
       
       if (result.isDuplicate) {
         set({ error: `Word "${english}" already exists in your vocabulary` });
@@ -564,9 +625,17 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  updateWordContent: async (id, arabicMeanings, exampleSentences) => {
+  updateWordContent: async (id, arabicMeanings, exampleSentences, englishMeaning) => {
     try {
-      await dbUpdateWordContent(id, { arabicMeanings, exampleSentences });
+      const updates: {
+        arabicMeanings?: string[];
+        exampleSentences?: string[];
+        englishMeaning?: string | null;
+      } = {};
+      if (arabicMeanings !== undefined) updates.arabicMeanings = arabicMeanings;
+      if (exampleSentences !== undefined) updates.exampleSentences = exampleSentences;
+      if (englishMeaning !== undefined) updates.englishMeaning = englishMeaning;
+      await dbUpdateWordContent(id, updates);
       await get().loadWords();
       await get().loadProblemWords();
     } catch (error) {

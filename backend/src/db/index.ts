@@ -11,6 +11,8 @@ export interface Word {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+  /** Optional concise English explanation of the word */
+  englishMeaning?: string;
   topic?: string;
   status: WordStatus;
   wrongCount: number;
@@ -137,7 +139,8 @@ export type AppStateKey =
   | 'flashcards:session_size'
   | 'risk:completed_date'
   | 'reading_fluency:state'
-  | 'streak:daily_goal';
+  | 'streak:daily_goal'
+  | 'problem:streak_goal';
 
 export interface BackupPayloadV1 {
   schemaVersion: 1;
@@ -151,8 +154,12 @@ export interface BackupPayloadV1 {
 
 const STREAK_ID = 'main-streak';
 const STREAK_DAILY_GOAL_KEY = 'streak:daily_goal';
+const PROBLEM_STREAK_GOAL_KEY = 'problem:streak_goal';
 const MIN_STREAK_DAILY_GOAL = 20;
 const DEFAULT_STREAK_DAILY_GOAL = 20;
+const MIN_PROBLEM_STREAK_GOAL = 0;
+const DEFAULT_PROBLEM_STREAK_GOAL = 3;
+const MAX_PROBLEM_STREAK_GOAL = 10;
 /** Interval (in days) assigned to a word the moment it first becomes "known" */
 const INITIAL_KNOWN_INTERVAL = 1;
 const FLASHCARD_LAST_COMPLETED_SESSION_KEY = 'flashcards:last_completed_session';
@@ -226,6 +233,7 @@ function toWord(row: Record<string, unknown>): Word {
     english: String(row.english),
     arabicMeanings: parseJsonArray(String(row.arabic_meanings ?? '[]')),
     exampleSentences: normalizeSentences(parseJsonArray(String(row.example_sentences ?? '[]'))),
+    englishMeaning: row.english_meaning ? String(row.english_meaning) : undefined,
     topic: row.topic ? String(row.topic) : undefined,
     status: String(row.status) as WordStatus,
     wrongCount: Number(row.wrong_count ?? 0),
@@ -325,6 +333,14 @@ function getStreakDailyGoal(): number {
     return DEFAULT_STREAK_DAILY_GOAL;
   }
   return Math.max(MIN_STREAK_DAILY_GOAL, Math.floor(value));
+}
+
+function getProblemStreakGoal(): number {
+  const value = getAppStateJson<number>(PROBLEM_STREAK_GOAL_KEY);
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_PROBLEM_STREAK_GOAL;
+  }
+  return Math.min(MAX_PROBLEM_STREAK_GOAL, Math.max(MIN_PROBLEM_STREAK_GOAL, Math.floor(value)));
 }
 
 export function initDatabase(): void {
@@ -451,6 +467,13 @@ export function initDatabase(): void {
       INITIAL_KNOWN_INTERVAL,
       'known'
     );
+  }
+
+  const hasEnglishMeaning = (db.prepare('PRAGMA table_info(words)').all() as Array<{ name: string }>).some(
+    (column) => column.name === 'english_meaning'
+  );
+  if (!hasEnglishMeaning) {
+    db.exec('ALTER TABLE words ADD COLUMN english_meaning TEXT');
   }
 }
 
@@ -776,6 +799,7 @@ export function addWord(input: {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+  englishMeaning?: string;
   topic?: string;
 }): { id: string | null; isDuplicate: boolean } {
   if (wordExists(input.english)) {
@@ -783,16 +807,18 @@ export function addWord(input: {
   }
 
   const id = randomUUID();
+  const englishMeaning = input.englishMeaning?.trim() || null;
   db.prepare(`
     INSERT INTO words (
-      id, english, arabic_meanings, example_sentences, topic, status,
+      id, english, arabic_meanings, example_sentences, english_meaning, topic, status,
       wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, ?, 'new', 0, 0, 0, 0, ?, NULL)
+    ) VALUES (?, ?, ?, ?, ?, ?, 'new', 0, 0, 0, 0, ?, NULL)
   `).run(
     id,
     input.english.trim(),
     JSON.stringify(input.arabicMeanings ?? []),
     JSON.stringify(normalizeSentences(input.exampleSentences ?? [])),
+    englishMeaning,
     input.topic ?? null,
     nowIso()
   );
@@ -936,8 +962,9 @@ export function incrementCorrectCount(id: string): void {
     newInterval = INITIAL_KNOWN_INTERVAL;
   } else if (word.status === 'problem') {
     newStreak = word.streak + 1;
-    if (newStreak >= 3) {
-      // Cleared the 3-streak requirement: promote back to known while keeping the
+    const problemStreakGoal = getProblemStreakGoal();
+    if (newStreak >= problemStreakGoal) {
+      // Cleared the streak requirement: promote back to known while keeping the
       // (already halved) interval so it resurfaces on the shortened schedule.
       newStatus = 'known';
       newStreak = 0;
@@ -985,7 +1012,7 @@ export function updateWordReviewCounts(id: string, correctCount: number, wrongCo
 
 export function updateWordContent(
   id: string,
-  updates: { arabicMeanings?: string[]; exampleSentences?: string[] }
+  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null }
 ): void {
   const current = db.prepare('SELECT * FROM words WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!current) return;
@@ -993,10 +1020,15 @@ export function updateWordContent(
   const word = toWord(current);
   const nextArabic = updates.arabicMeanings ?? word.arabicMeanings;
   const nextSentences = updates.exampleSentences ? normalizeSentences(updates.exampleSentences) : word.exampleSentences;
+  const nextEnglishMeaning =
+    updates.englishMeaning !== undefined
+      ? (updates.englishMeaning?.trim() || null)
+      : (word.englishMeaning?.trim() || null);
 
-  db.prepare('UPDATE words SET arabic_meanings = ?, example_sentences = ? WHERE id = ?').run(
+  db.prepare('UPDATE words SET arabic_meanings = ?, example_sentences = ?, english_meaning = ? WHERE id = ?').run(
     JSON.stringify(nextArabic),
     JSON.stringify(nextSentences),
+    nextEnglishMeaning,
     id
   );
 }
@@ -1013,7 +1045,7 @@ export function getWordReviewHistory(wordId: string): WordReviewEvent[] {
 }
 
 export function bulkAddWords(
-  words: Array<{ english: string; arabicMeanings: string[]; exampleSentences: string[] }>
+  words: Array<{ english: string; arabicMeanings: string[]; exampleSentences: string[]; englishMeaning?: string }>
 ): { added: number; skipped: number; skippedWords: string[] } {
   const existingRows = db.prepare('SELECT english FROM words').all() as Array<{ english: string }>;
   const existingSet = new Set(existingRows.map((w) => w.english.toLowerCase()));
@@ -1023,9 +1055,9 @@ export function bulkAddWords(
 
   const insertStmt = db.prepare(`
     INSERT INTO words (
-      id, english, arabic_meanings, example_sentences, topic, status,
+      id, english, arabic_meanings, example_sentences, english_meaning, topic, status,
       wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, NULL, 'new', 0, 0, 0, 0, ?, NULL)
+    ) VALUES (?, ?, ?, ?, ?, NULL, 'new', 0, 0, 0, 0, ?, NULL)
   `);
 
   let added = 0;
@@ -1042,6 +1074,7 @@ export function bulkAddWords(
         word.english,
         JSON.stringify(word.arabicMeanings ?? []),
         JSON.stringify(normalizeSentences(word.exampleSentences ?? [])),
+        word.englishMeaning?.trim() || null,
         nowIso()
       );
       added += 1;
@@ -1259,9 +1292,9 @@ export function importFullBackup(payload: BackupPayloadV1): {
 } {
   const insertWord = db.prepare(`
     INSERT INTO words (
-      id, english, arabic_meanings, example_sentences, topic, status,
+      id, english, arabic_meanings, example_sentences, english_meaning, topic, status,
       wrong_count, correct_count, streak, interval, created_at, last_reviewed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertEvent = db.prepare(
@@ -1292,6 +1325,7 @@ export function importFullBackup(payload: BackupPayloadV1): {
         word.english,
         JSON.stringify(word.arabicMeanings ?? []),
         JSON.stringify(normalizeSentences(word.exampleSentences ?? [])),
+        word.englishMeaning?.trim() || null,
         word.topic ?? null,
         word.status,
         word.wrongCount ?? 0,

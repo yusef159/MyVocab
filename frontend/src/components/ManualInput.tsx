@@ -23,13 +23,20 @@ export default function ManualInput() {
 
   // Manual input fields
   const [manualMeaning, setManualMeaning] = useState('');
+  const [manualEnglishMeaning, setManualEnglishMeaning] = useState('');
   const [manualSentences, setManualSentences] = useState<string[]>(['', '', '']);
+  const [showManualExplainOptions, setShowManualExplainOptions] = useState(false);
+  const [selectedManualExplainIndex, setSelectedManualExplainIndex] = useState<number | null>(null);
 
   const {
     suggestions,
     isSuggestingLoading,
     error,
     suggestMeanings,
+    explainWord,
+    clearEnglishExplanation,
+    englishExplanationOptions,
+    isExplainingLoading,
     saveWord,
     clearSuggestions,
   } = useVocabStore();
@@ -116,15 +123,49 @@ export default function ManualInput() {
   const handleSave = async (
     english: string,
     arabicMeanings: string[],
-    exampleSentences: string[]
+    exampleSentences: string[],
+    topic?: string,
+    englishMeaning?: string
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentences);
+    const result = await saveWord(english, arabicMeanings, exampleSentences, topic, englishMeaning);
     if (result.success) {
       setSuccessMessage('Word saved successfully!');
       clearSuggestions();
       setWord('');
+      setManualEnglishMeaning('');
     }
   };
+
+  const handleManualExplainWithAi = async () => {
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    setShowManualExplainOptions(true);
+    setSelectedManualExplainIndex(null);
+    await explainWord(trimmed);
+  };
+
+  const handleApplyManualExplanation = () => {
+    if (selectedManualExplainIndex === null) return;
+    const option = englishExplanationOptions[selectedManualExplainIndex];
+    if (!option) return;
+    setManualEnglishMeaning(option);
+    setShowManualExplainOptions(false);
+    clearEnglishExplanation();
+    setSelectedManualExplainIndex(null);
+  };
+
+  useEffect(() => {
+    if (showManualExplainOptions && englishExplanationOptions.length === 1 && selectedManualExplainIndex === null) {
+      setSelectedManualExplainIndex(0);
+    }
+  }, [showManualExplainOptions, englishExplanationOptions, selectedManualExplainIndex]);
+
+  useEffect(() => {
+    if (inputMode !== 'manual') {
+      setShowManualExplainOptions(false);
+      clearEnglishExplanation();
+    }
+  }, [inputMode, clearEnglishExplanation]);
 
   const handleManualSave = async () => {
     const meanings = manualMeaning
@@ -134,17 +175,22 @@ export default function ManualInput() {
     if (!word.trim() || meanings.length === 0) return;
 
     const sentences = manualSentences.map(s => s.trim()).filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES);
-    const result = await saveWord(word.trim(), meanings, sentences.length > 0 ? sentences : ['']);
+    const englishMeaning = manualEnglishMeaning.trim() || undefined;
+    const result = await saveWord(word.trim(), meanings, sentences.length > 0 ? sentences : [''], undefined, englishMeaning);
     if (result.success) {
       setSuccessMessage('Word saved successfully!');
       setWord('');
       setManualMeaning('');
+      setManualEnglishMeaning('');
       setManualSentences(['', '', '']);
+      setShowManualExplainOptions(false);
     }
   };
 
   const handleCancel = () => {
     clearSuggestions();
+    clearEnglishExplanation();
+    setShowManualExplainOptions(false);
   };
 
   const hasAtLeastOneMeaning = manualMeaning
@@ -261,6 +307,87 @@ export default function ManualInput() {
                     />
                   ))}
                 </div>
+              </div>
+
+              {/* English Meaning (optional) */}
+              <div className="mb-6">
+                <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
+                  English Meaning <span className="text-gray-500 normal-case">• Optional — short explanation in English</span>
+                </label>
+                <textarea
+                  value={manualEnglishMeaning}
+                  onChange={(e) => setManualEnglishMeaning(e.target.value)}
+                  placeholder="A short explanation of what the word means in English..."
+                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 mb-3"
+                  rows={2}
+                />
+                {!showManualExplainOptions ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleManualExplainWithAi()}
+                    disabled={isExplainingLoading || !word.trim()}
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isExplainingLoading ? 'Getting explanations...' : 'Explain with AI'}
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-gray-600 bg-gray-900/40 p-3 space-y-3">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide">
+                      Choose the explanation you understand best
+                    </p>
+                    {isExplainingLoading ? (
+                      <div className="flex justify-center py-4">
+                        <svg className="animate-spin h-6 w-6 text-amber-500" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                    ) : englishExplanationOptions.length > 0 ? (
+                      <>
+                        <div className="space-y-2">
+                          {englishExplanationOptions.map((option, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setSelectedManualExplainIndex(i)}
+                              className={`w-full text-left p-3 rounded-lg border transition-all flex items-center justify-between ${
+                                selectedManualExplainIndex === i
+                                  ? 'border-amber-500 bg-amber-500/20 text-white'
+                                  : 'border-gray-600 bg-gray-700/50 text-gray-300 hover:border-gray-500'
+                              }`}
+                            >
+                              <span className="text-sm">{option}</span>
+                              {selectedManualExplainIndex === i && <span className="text-amber-400">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowManualExplainOptions(false);
+                              clearEnglishExplanation();
+                              setSelectedManualExplainIndex(null);
+                            }}
+                            className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleApplyManualExplanation}
+                            disabled={selectedManualExplainIndex === null}
+                            className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                          >
+                            Use this
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-gray-400 text-sm py-2">No explanations. Try again.</p>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}

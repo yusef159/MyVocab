@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
-import { MIN_STREAK_DAILY_GOAL } from '../db';
+import { MIN_STREAK_DAILY_GOAL, MIN_PROBLEM_STREAK_GOAL, MAX_PROBLEM_STREAK_GOAL, DEFAULT_PROBLEM_STREAK_GOAL } from '../db';
 
 const WEEKDAY_OPTIONS: readonly { value: number; label: string }[] = [
   { value: 0, label: 'Sunday' },
@@ -27,11 +27,14 @@ export default function Settings() {
     error,
     loadBackupSchedule,
     loadStreakDailyGoal,
+    loadProblemStreakGoal,
     runBackupNow,
     saveBackupSchedule,
     saveStreakDailyGoal,
+    saveProblemStreakGoal,
     setBackupScheduleActive,
     streakDailyGoal,
+    problemStreakGoal,
   } = useVocabStore();
 
   const [enabled, setEnabled] = useState(false);
@@ -48,11 +51,15 @@ export default function Settings() {
   const [message, setMessage] = useState<string | null>(null);
   const [streakGoalMessage, setStreakGoalMessage] = useState<string | null>(null);
   const [streakGoal, setStreakGoal] = useState(MIN_STREAK_DAILY_GOAL);
+  const [isSavingProblemStreakGoal, setIsSavingProblemStreakGoal] = useState(false);
+  const [problemStreakGoalMessage, setProblemStreakGoalMessage] = useState<string | null>(null);
+  const [problemStreakGoalInput, setProblemStreakGoalInput] = useState(DEFAULT_PROBLEM_STREAK_GOAL);
 
   useEffect(() => {
     void loadBackupSchedule();
     void loadStreakDailyGoal();
-  }, [loadBackupSchedule, loadStreakDailyGoal]);
+    void loadProblemStreakGoal();
+  }, [loadBackupSchedule, loadStreakDailyGoal, loadProblemStreakGoal]);
 
   useEffect(() => {
     if (backupSchedule) {
@@ -81,10 +88,20 @@ export default function Settings() {
   }, [streakDailyGoal]);
 
   useEffect(() => {
+    setProblemStreakGoalInput(problemStreakGoal);
+  }, [problemStreakGoal]);
+
+  useEffect(() => {
     if (!streakGoalMessage) return;
     const timer = setTimeout(() => setStreakGoalMessage(null), 3000);
     return () => clearTimeout(timer);
   }, [streakGoalMessage]);
+
+  useEffect(() => {
+    if (!problemStreakGoalMessage) return;
+    const timer = setTimeout(() => setProblemStreakGoalMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [problemStreakGoalMessage]);
 
   const handleToggle = async (nextActive: boolean) => {
     setEnabled(nextActive);
@@ -156,6 +173,22 @@ export default function Settings() {
       setStreakGoalMessage('Failed to save daily streak goal.');
     }
     setIsSavingStreakGoal(false);
+  };
+
+  const handleSaveProblemStreakGoal = async () => {
+    const normalizedGoal = Math.min(
+      MAX_PROBLEM_STREAK_GOAL,
+      Math.max(MIN_PROBLEM_STREAK_GOAL, Math.floor(problemStreakGoalInput ?? DEFAULT_PROBLEM_STREAK_GOAL))
+    );
+    setIsSavingProblemStreakGoal(true);
+    const ok = await saveProblemStreakGoal(normalizedGoal);
+    if (ok) {
+      await loadProblemStreakGoal();
+      setProblemStreakGoalMessage('Problem word streak goal saved.');
+    } else {
+      setProblemStreakGoalMessage('Failed to save problem word streak goal.');
+    }
+    setIsSavingProblemStreakGoal(false);
   };
 
   return (
@@ -389,6 +422,87 @@ export default function Settings() {
           }`}
         >
           {isSavingStreakGoal ? 'Saving...' : 'Save Streak Goal'}
+        </button>
+      </div>
+
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 sm:p-6 space-y-4">
+        <div>
+          <p className="text-base font-semibold text-white">Problem Word Streak</p>
+          <p className="text-sm text-gray-400">
+            How many times in a row you must answer a problem word correctly before it becomes known. Set to 0 for no streak (becomes known on the first correct answer). Max {MAX_PROBLEM_STREAK_GOAL}.
+          </p>
+        </div>
+
+        {problemStreakGoalMessage && (
+          <div
+            className={`p-3 rounded-lg border text-sm ${
+              problemStreakGoalMessage.startsWith('Failed')
+                ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            }`}
+          >
+            {problemStreakGoalMessage}
+          </div>
+        )}
+
+        <div className="max-w-md space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-gray-400 text-sm uppercase tracking-wide">Correct answers needed</label>
+              <span className="text-white font-semibold tabular-nums">
+                {problemStreakGoalInput === 0 ? '0 (no streak)' : problemStreakGoalInput}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={MIN_PROBLEM_STREAK_GOAL}
+              max={MAX_PROBLEM_STREAK_GOAL}
+              step={1}
+              value={problemStreakGoalInput}
+              onChange={(e) => setProblemStreakGoalInput(parseInt(e.target.value, 10))}
+              className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 accent-amber-500"
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>0</span>
+              <span>{MAX_PROBLEM_STREAK_GOAL}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Or type a value</label>
+            <input
+              type="number"
+              min={MIN_PROBLEM_STREAK_GOAL}
+              max={MAX_PROBLEM_STREAK_GOAL}
+              value={problemStreakGoalInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  setProblemStreakGoalInput(MIN_PROBLEM_STREAK_GOAL);
+                  return;
+                }
+                const parsed = parseInt(raw, 10);
+                if (Number.isNaN(parsed)) return;
+                setProblemStreakGoalInput(
+                  Math.min(MAX_PROBLEM_STREAK_GOAL, Math.max(MIN_PROBLEM_STREAK_GOAL, parsed))
+                );
+              }}
+              className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void handleSaveProblemStreakGoal()}
+          disabled={isSavingProblemStreakGoal}
+          className={`px-5 py-3 rounded-lg font-medium transition-colors ${
+            isSavingProblemStreakGoal
+              ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              : 'bg-emerald-600 text-white hover:bg-emerald-500'
+          }`}
+        >
+          {isSavingProblemStreakGoal ? 'Saving...' : 'Save Problem Streak Goal'}
         </button>
       </div>
     </div>

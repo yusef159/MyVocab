@@ -35,16 +35,27 @@ export type AppStateKey =
   | 'flashcards:session_size'
   | 'risk:completed_date'
   | 'reading_fluency:state'
-  | 'streak:daily_goal';
+  | 'streak:daily_goal'
+  | 'problem:streak_goal';
 
 export const MIN_STREAK_DAILY_GOAL = 20;
 export const DEFAULT_STREAK_DAILY_GOAL = 20;
+export const MIN_PROBLEM_STREAK_GOAL = 0;
+export const DEFAULT_PROBLEM_STREAK_GOAL = 3;
+export const MAX_PROBLEM_STREAK_GOAL = 10;
 
 function normalizeStreakDailyGoal(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return DEFAULT_STREAK_DAILY_GOAL;
   }
   return Math.max(MIN_STREAK_DAILY_GOAL, Math.floor(value));
+}
+
+function normalizeProblemStreakGoal(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_PROBLEM_STREAK_GOAL;
+  }
+  return Math.min(MAX_PROBLEM_STREAK_GOAL, Math.max(MIN_PROBLEM_STREAK_GOAL, Math.floor(value)));
 }
 
 const API_URL = '';
@@ -61,6 +72,7 @@ export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount'
     english: word.english,
     arabicMeanings: word.arabicMeanings,
     exampleSentences: word.exampleSentences,
+    englishMeaning: word.englishMeaning,
     topic: word.topic,
   });
   return res.data;
@@ -112,7 +124,7 @@ export async function getWordReviewHistory(wordId: string): Promise<WordReviewEv
 
 export async function updateWordContent(
   id: string,
-  updates: { arabicMeanings?: string[]; exampleSentences?: string[] }
+  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null }
 ): Promise<void> {
   await axios.patch(`${API_URL}/api/data/words/${id}/content`, updates);
 }
@@ -221,6 +233,17 @@ export async function getStreakDailyGoal(): Promise<number> {
 export async function saveStreakDailyGoal(goal: number): Promise<number> {
   const normalized = normalizeStreakDailyGoal(goal);
   await setAppState('streak:daily_goal', normalized);
+  return normalized;
+}
+
+export async function getProblemStreakGoal(): Promise<number> {
+  const value = await getAppState<number>('problem:streak_goal');
+  return normalizeProblemStreakGoal(value);
+}
+
+export async function saveProblemStreakGoal(goal: number): Promise<number> {
+  const normalized = normalizeProblemStreakGoal(goal);
+  await setAppState('problem:streak_goal', normalized);
   return normalized;
 }
 

@@ -100,9 +100,10 @@ export default function WordGenerator() {
     english: string,
     arabicMeanings: string[],
     exampleSentences: string[],
-    wordTopic?: string
+    wordTopic?: string,
+    englishMeaning?: string
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentences, wordTopic);
+    const result = await saveWord(english, arabicMeanings, exampleSentences, wordTopic, englishMeaning);
     if (result.success) {
       setSaveMessage('Word saved successfully!');
       moveToNext();

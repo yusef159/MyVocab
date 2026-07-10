@@ -44,12 +44,14 @@ const addWordSchema = z.object({
   english: z.string().min(1),
   arabicMeanings: z.array(z.string()).default([]),
   exampleSentences: z.array(z.string()).default(['']),
+  englishMeaning: z.string().optional(),
   topic: z.string().optional(),
 });
 
 const updateWordContentSchema = z.object({
   arabicMeanings: z.array(z.string()).optional(),
   exampleSentences: z.array(z.string()).optional(),
+  englishMeaning: z.string().nullable().optional(),
 });
 
 const updateWordReviewCountsSchema = z.object({
@@ -93,6 +95,7 @@ const appStateKeySchema = z.enum([
   'risk:completed_date',
   'reading_fluency:state',
   'streak:daily_goal',
+  'problem:streak_goal',
 ]);
 
 const backupSchema = z.object({
@@ -104,6 +107,7 @@ const backupSchema = z.object({
       english: z.string(),
       arabicMeanings: z.array(z.string()),
       exampleSentences: z.array(z.string()),
+      englishMeaning: z.string().optional(),
       topic: z.string().optional(),
       status: wordStatusSchema,
       wrongCount: z.number().int().min(0),

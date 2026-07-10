@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
-import { generateWords, suggestMeanings } from '../services/openai.js';
+import { generateWords, suggestMeanings, suggestEnglishExplanation } from '../services/openai.js';
 import { analyzeSentence } from '../services/sentenceFeedback.js';
 import { generateContextPrompt } from '../services/contextPrompt.js';
 import { generateScenarios } from '../services/scenarioGeneration.js';
@@ -19,6 +19,10 @@ const generateSchema = z.object({
 });
 
 const suggestSchema = z.object({
+  word: z.string().min(1).max(100),
+});
+
+const explainSchema = z.object({
   word: z.string().min(1).max(100),
 });
 
@@ -173,19 +177,39 @@ router.post('/suggest', async (req, res) => {
   try {
     const validation = suggestSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ 
-        error: 'Invalid request', 
-        details: validation.error.errors 
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors
       });
     }
 
     const { word } = validation.data;
     const suggestion = await suggestMeanings(word);
-    
+
     res.json({ suggestion });
   } catch (error) {
     console.error('Error suggesting meanings:', error);
     res.status(500).json({ error: 'Failed to get suggestions' });
+  }
+});
+
+router.post('/explain', async (req, res) => {
+  try {
+    const validation = explainSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { word } = validation.data;
+    const result = await suggestEnglishExplanation(word);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error explaining word:', error);
+    res.status(500).json({ error: 'Failed to explain word' });
   }
 });
 

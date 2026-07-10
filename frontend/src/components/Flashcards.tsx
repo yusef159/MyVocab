@@ -182,6 +182,7 @@ export default function Flashcards() {
     streakDailyGoal,
     loadStreak,
     loadStreakDailyGoal,
+    loadProblemStreakGoal,
   } = useVocabStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -246,7 +247,8 @@ export default function Flashcards() {
     loadWords();
     loadStreak();
     loadStreakDailyGoal();
-  }, [loadWords, loadStreak, loadStreakDailyGoal]);
+    loadProblemStreakGoal();
+  }, [loadWords, loadStreak, loadStreakDailyGoal, loadProblemStreakGoal]);
 
   useEffect(() => {
     let cancelled = false;

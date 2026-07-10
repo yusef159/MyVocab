@@ -9,11 +9,13 @@ export interface Word {
   arabicMeanings: string[];  // Now supports multiple meanings
   /** 1–3 example sentences (optional legacy: exampleSentence is migrated to this) */
   exampleSentences: string[];
+  /** Optional concise English explanation of the word */
+  englishMeaning?: string;
   topic?: string;
   status: WordStatus;
   wrongCount: number;
   correctCount: number;
-  streak: number;  // Streak counter for problem words (0-3)
+  streak: number;  // Streak counter for problem words (progress toward known)
   /** Spaced-repetition interval in days; known words resurface as at-risk after this many days */
   interval: number;
   createdAt: Date;

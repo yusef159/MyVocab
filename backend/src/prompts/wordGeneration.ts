@@ -30,3 +30,17 @@ Rules:
 - Do not include duplicate words.
 ${excludedWords.length > 0 ? `- Do NOT use these words: ${excludedWords.join(', ')}` : ''}
 `;
+
+export const explainWordPrompt = (word: string) => `
+Explain the English word "${word}" for an Arabic learner who is still learning English.
+
+Return JSON only:
+{"options":["short definition 1","short definition 2"]}
+
+Rules:
+- Provide 1 to 3 concise definitions in simple, everyday English (max 25 words each).
+- Use only plain English — no Arabic, no example sentences, no commas inside a definition.
+- If the word has one clear meaning, return only 1 option.
+- If it has multiple common meanings, return 2 or 3 options (easiest/simplest first).
+- Each option should explain what the word means, not how to use it in a sentence.
+`;
