@@ -178,12 +178,17 @@ export default function Flashcards() {
     loadWords,
     markAsKnown,
     markAsProblem,
+    updateWordContent,
+    explainWord,
+    clearEnglishExplanation,
     streak,
     streakDailyGoal,
     loadStreak,
     loadStreakDailyGoal,
     loadProblemStreakGoal,
   } = useVocabStore();
+  const englishExplanationOptions = useVocabStore((s) => s.englishExplanationOptions);
+  const isExplainingLoading = useVocabStore((s) => s.isExplainingLoading);
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -235,6 +240,8 @@ export default function Flashcards() {
   const [swipeOffsetX, setSwipeOffsetX] = useState(0);
   const [isSwipeSettling, setIsSwipeSettling] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [isExplainingEnglish, setIsExplainingEnglish] = useState(false);
+  const [selectedExplainIndex, setSelectedExplainIndex] = useState<number | null>(null);
 
   const persistActiveSession = useCallback((session: FlashcardSessionSnapshot | null) => {
     setActiveSessionSnapshot(session);
@@ -618,7 +625,50 @@ export default function Flashcards() {
     setSwipeOffsetX(0);
     setIsSwipeSettling(false);
     swipeHandledRef.current = false;
-  }, [currentIndex]);
+    setIsExplainingEnglish(false);
+    setSelectedExplainIndex(null);
+    clearEnglishExplanation();
+  }, [currentIndex, clearEnglishExplanation]);
+
+  useEffect(() => {
+    if (!isFlipped) {
+      setIsExplainingEnglish(false);
+      setSelectedExplainIndex(null);
+      clearEnglishExplanation();
+    }
+  }, [isFlipped, clearEnglishExplanation]);
+
+  useEffect(() => {
+    if (isExplainingEnglish && englishExplanationOptions.length === 1 && selectedExplainIndex === null) {
+      setSelectedExplainIndex(0);
+    }
+  }, [isExplainingEnglish, englishExplanationOptions, selectedExplainIndex]);
+
+  const handleExplainWord = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentWord) return;
+    setIsExplainingEnglish(true);
+    setSelectedExplainIndex(null);
+    await explainWord(currentWord.english);
+  };
+
+  const handleSaveEnglishMeaning = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentWord || selectedExplainIndex === null) return;
+    const meaning = englishExplanationOptions[selectedExplainIndex];
+    if (!meaning) return;
+    await updateWordContent(currentWord.id, undefined, undefined, meaning);
+    setIsExplainingEnglish(false);
+    setSelectedExplainIndex(null);
+    clearEnglishExplanation();
+  };
+
+  const handleCancelExplain = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExplainingEnglish(false);
+    setSelectedExplainIndex(null);
+    clearEnglishExplanation();
+  };
 
   useEffect(() => {
     return () => {
@@ -1748,7 +1798,10 @@ export default function Flashcards() {
           {/* Front */}
           <div
             className="absolute inset-0 h-full w-full bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 overflow-hidden backface-hidden"
-            style={{ backfaceVisibility: 'hidden' }}
+            style={{
+              backfaceVisibility: 'hidden',
+              pointerEvents: isFlipped ? 'none' : 'auto',
+            }}
           >
             <div className="relative flex h-full w-full flex-col">
               <button
@@ -1782,6 +1835,7 @@ export default function Flashcards() {
             style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
+              pointerEvents: isFlipped ? 'auto' : 'none',
             }}
           >
             <div className="relative flex h-full w-full flex-col">
@@ -1816,6 +1870,21 @@ export default function Flashcards() {
                 </svg>
               </button>
 
+              {/* Explain with AI — bottom-left icon when no English meaning */}
+              {!currentWord?.englishMeaning?.trim() && !isExplainingEnglish && (
+                <button
+                  type="button"
+                  onClick={handleExplainWord}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                  className="absolute bottom-3 left-3 z-10 p-2 rounded-full bg-gray-800/80 text-gray-300 hover:bg-amber-600 hover:text-white transition-colors"
+                  title="Explain with AI"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </button>
+              )}
+
               <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:gap-5 w-full max-w-lg mx-auto p-5 sm:p-6 overflow-y-auto min-h-0">
               {/* 1. Arabic meanings — centered */}
               <div className="w-full text-center space-y-1.5">
@@ -1842,13 +1911,83 @@ export default function Flashcards() {
                 )}
               </div>
 
-              {/* 3. English meaning — at the bottom */}
-              {currentWord?.englishMeaning?.trim() && (
-                <div className="w-full text-center pt-4 border-t border-emerald-500/25">
-                  <p className="text-gray-200 text-sm sm:text-base leading-relaxed px-1">
+              {/* 3. English meaning — shown when saved or while picking an AI explanation */}
+              {(currentWord?.englishMeaning?.trim() || isExplainingEnglish) && (
+              <div
+                className="w-full pt-4 border-t border-emerald-500/25"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {currentWord?.englishMeaning?.trim() ? (
+                  <p className="text-gray-200 text-sm sm:text-base leading-relaxed px-1 text-center">
                     {currentWord.englishMeaning}
                   </p>
-                </div>
+                ) : (
+                  <div className="w-full">
+                    {isExplainingLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <svg className="animate-spin h-7 w-7 text-amber-500" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                    ) : englishExplanationOptions.length > 0 ? (
+                      <>
+                        <p className="text-gray-400 text-xs uppercase tracking-wide mb-2 text-center">
+                          Choose the explanation you understand best
+                        </p>
+                        <div className="space-y-2 mb-3">
+                          {englishExplanationOptions.map((option, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedExplainIndex(i);
+                              }}
+                              className={`w-full text-left p-2.5 rounded-lg border transition-all flex items-center justify-between ${
+                                selectedExplainIndex === i
+                                  ? 'border-amber-500 bg-amber-500/20 text-white'
+                                  : 'border-gray-600 bg-gray-800/50 text-gray-300 hover:border-gray-500'
+                              }`}
+                            >
+                              <span className="text-sm">{option}</span>
+                              {selectedExplainIndex === i && <span className="text-amber-400 ml-2">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCancelExplain}
+                            className="flex-1 px-3 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-800 text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveEnglishMeaning}
+                            disabled={selectedExplainIndex === null}
+                            className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center space-y-3">
+                        <p className="text-gray-400 text-sm">No explanations. Try again.</p>
+                        <button
+                          type="button"
+                          onClick={handleExplainWord}
+                          className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition-colors text-sm font-medium"
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               )}
               </div>
             </div>
