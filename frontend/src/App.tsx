@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import Dashboard from './components/Dashboard';
 import WordGenerator from './components/WordGenerator';
@@ -13,6 +13,8 @@ import { useVocabStore } from './stores/vocabStore';
 
 function App() {
   const { loadStats, loadStreak } = useVocabStore();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadStats();
@@ -56,6 +58,16 @@ function App() {
             </NavLink>
             <NavLink
               to="/flashcards"
+              onClick={(e) => {
+                // Re-clicking Flashcards while already on it returns to the options screen
+                if (location.pathname === '/flashcards') {
+                  e.preventDefault();
+                  navigate('/flashcards', {
+                    replace: true,
+                    state: { resetToOptions: Date.now() },
+                  });
+                }
+              }}
               className={({ isActive }) =>
                 `flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors ${
                   isActive

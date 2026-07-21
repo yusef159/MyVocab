@@ -128,8 +128,10 @@ export default function Dashboard() {
   const {
     stats,
     streak,
+    streakDailyGoal,
     loadStats,
     loadStreak,
+    loadStreakDailyGoal,
     reviewCounts,
     loadReviewCounts,
     getEarliestReviewDate,
@@ -138,13 +140,19 @@ export default function Dashboard() {
 
   const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastMonth');
 
+  const reviewsToday = streak?.reviewsToday || 0;
+  const dailyGoal = Math.max(1, streakDailyGoal || 20);
+  const dailyProgress = Math.min(1, reviewsToday / dailyGoal);
+  const dailyProgressPercent = Math.round(dailyProgress * 100);
+
   useEffect(() => {
     loadStats();
     loadStreak();
+    loadStreakDailyGoal();
     getRiskWords()
       .then((items) => setRiskCount(items.length))
       .catch(() => setRiskCount(0));
-  }, [loadStats, loadStreak]);
+  }, [loadStats, loadStreak, loadStreakDailyGoal]);
 
   const loadReviewData = useCallback(async () => {
     if (reviewRange === 'allTime') {
@@ -171,29 +179,47 @@ export default function Dashboard() {
 
       <RiskWordsReminder />
 
-      {/* Streak Section */}
-      <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 sm:p-6 text-white">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <p className="text-orange-100 text-sm uppercase tracking-wide">Current Streak</p>
-            <p className="text-4xl sm:text-5xl font-bold mt-1">
-              {streak?.currentStreak || 0}
-              <span className="text-2xl ml-2">days</span>
-            </p>
+      {/* Streak Section — fills with daily review progress toward the streak goal */}
+      <div className="relative overflow-hidden rounded-2xl border border-orange-500/40 bg-gray-800/80 text-white">
+        <div
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-orange-500 to-amber-500 transition-[width] duration-500 ease-out"
+          style={{ width: `${dailyProgressPercent}%` }}
+          aria-hidden
+        />
+        <div className="relative z-10 p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-sm uppercase tracking-wide text-white/80">Current Streak</p>
+              <p className="text-4xl sm:text-5xl font-bold mt-1 drop-shadow-sm">
+                {streak?.currentStreak || 0}
+                <span className="text-2xl ml-2">days</span>
+              </p>
+            </div>
+            <div className="sm:text-right">
+              <p className="text-sm uppercase tracking-wide text-white/80">Longest Streak</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1 drop-shadow-sm">
+                {streak?.longestStreak || 0}
+                <span className="text-lg ml-2">days</span>
+              </p>
+            </div>
           </div>
-          <div className="sm:text-right">
-            <p className="text-orange-100 text-sm uppercase tracking-wide">Longest Streak</p>
-            <p className="text-2xl sm:text-3xl font-bold mt-1">
-              {streak?.longestStreak || 0}
-              <span className="text-lg ml-2">days</span>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-white/85">
+            <p>
+              Today: {Math.min(reviewsToday, dailyGoal)}/{dailyGoal} reviews
+              {dailyProgress >= 1 ? ' — daily goal reached' : ''}
             </p>
+            {streak?.lastActivityDate && (
+              <p>
+                Last activity:{' '}
+                {new Date(streak.lastActivityDate).toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+              </p>
+            )}
           </div>
         </div>
-        {streak?.lastActivityDate && (
-          <p className="text-orange-100 text-sm mt-4">
-            Last activity: {new Date(streak.lastActivityDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </p>
-        )}
       </div>
 
       {/* Stats Grid */}

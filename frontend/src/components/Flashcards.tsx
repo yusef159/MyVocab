@@ -317,27 +317,31 @@ export default function Flashcards() {
     }
   }, [streak, previousReviewsToday]);
 
-  // Track streak progress and show message when daily goal is reached
+  // Track streak progress and show toast when daily goal is first reached this session
   useEffect(() => {
-    if (streak && previousReviewsToday !== null) {
-      const currentReviews = streak.reviewsToday || 0;
-      
-      // If we just hit the streak daily goal (went from less than goal to exactly goal)
-      if (previousReviewsToday < streakDailyGoal && currentReviews === streakDailyGoal) {
-        setShowStreakMessage(true);
-        // Auto-hide after 5 seconds
-        const timer = setTimeout(() => {
-          setShowStreakMessage(false);
-        }, 5000);
-        return () => clearTimeout(timer);
-      }
-      
-      // Update previous reviews count
-      if (currentReviews !== previousReviewsToday) {
-        setPreviousReviewsToday(currentReviews);
-      }
+    if (!streak || previousReviewsToday === null) return;
+
+    const currentReviews = streak.reviewsToday || 0;
+
+    if (previousReviewsToday < streakDailyGoal && currentReviews >= streakDailyGoal) {
+      setShowStreakMessage(true);
+      setPreviousReviewsToday(currentReviews);
+      return;
+    }
+
+    if (currentReviews !== previousReviewsToday) {
+      setPreviousReviewsToday(currentReviews);
     }
   }, [streak, previousReviewsToday, streakDailyGoal]);
+
+  // Auto-dismiss streak toast (separate so answering more cards can't cancel the timer)
+  useEffect(() => {
+    if (!showStreakMessage) return;
+    const timer = window.setTimeout(() => {
+      setShowStreakMessage(false);
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [showStreakMessage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -755,17 +759,27 @@ export default function Flashcards() {
     }
   };
 
-  const backToOptions = () => {
+  const backToOptions = useCallback(() => {
     setSessionStarted(false);
     setSessionComplete(false);
     setCurrentIndex(0);
     setIsFlipped(false);
     setSessionKnownCount(0);
     setSessionProblemCount(0);
+    setTestSessionWords(null);
+    setIsRiskReminderSession(false);
     lastSpokenWordRef.current = null;
     lastSpokenSentenceRef.current = null;
     setShowInstructions(false);
-  };
+  }, []);
+
+  // Nav re-click on Flashcards tab → return to the options (first) page
+  useEffect(() => {
+    const state = location.state as { resetToOptions?: number } | null;
+    if (!state?.resetToOptions) return;
+    backToOptions();
+    navigate('/flashcards', { replace: true, state: {} });
+  }, [location.state, navigate, backToOptions]);
 
   const regenerateCurrentSession = () => {
     if (shuffledWords.length === 0) return;
@@ -1704,24 +1718,27 @@ export default function Flashcards() {
         </div>
       </div>
 
-      {/* Streak Achievement Message */}
+      {/* Compact streak toast — floats above session, auto-dismisses */}
       {showStreakMessage && (
-        <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-6 border border-orange-400/50 shadow-lg animate-pulse">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="text-4xl">🔥</div>
-              <div>
-                <p className="text-white font-bold text-xl">Streak Achieved!</p>
-                <p className="text-orange-100 text-sm mt-1">
-                  You've completed {streakDailyGoal} reviews today! Your streak is now {streak?.currentStreak || 1} day{streak?.currentStreak !== 1 ? 's' : ''}.
-                </p>
-              </div>
-            </div>
+        <div
+          role="status"
+          className="fixed top-4 left-1/2 z-50 w-[min(22rem,calc(100vw-1.5rem))] animate-streak-toast"
+        >
+          <div className="flex items-center gap-2.5 rounded-full border border-orange-400/50 bg-gradient-to-r from-orange-500 to-amber-500 px-3.5 py-2 shadow-lg shadow-orange-900/30">
+            <svg className="h-4 w-4 shrink-0 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2c.4 2.2-.3 3.8-1.5 5.2C9.2 8.6 8 10.2 8 12.2c0 2.4 1.7 4.3 4 4.3s4-1.9 4-4.3c0-1.3-.4-2.4-1-3.4.9 1.1 1.5 2.4 1.5 4 0 3.3-2.5 5.8-5.5 5.8S5.5 15.8 5.5 12.5C5.5 8.8 8.2 6.2 12 2z" />
+            </svg>
+            <p className="min-w-0 flex-1 text-sm font-semibold text-white truncate">
+              Daily streak done · {streak?.currentStreak || 1} day
+              {streak?.currentStreak !== 1 ? 's' : ''}
+            </p>
             <button
+              type="button"
               onClick={() => setShowStreakMessage(false)}
-              className="text-white hover:text-orange-100 transition-colors"
+              className="shrink-0 rounded-full p-1 text-white/90 hover:bg-white/15 hover:text-white transition-colors"
+              aria-label="Dismiss streak message"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
