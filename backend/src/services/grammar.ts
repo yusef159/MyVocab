@@ -29,7 +29,7 @@ function getOpenAIClient(): OpenAI {
 }
 
 const PRIMARY_MODEL = 'gpt-5-nano';
-const FALLBACK_MODEL = 'gpt-4.1-nano';
+const FALLBACK_MODEL = 'gpt-6-luna';
 let activeModel: string = PRIMARY_MODEL;
 
 async function callWithModel(client: OpenAI, model: string, prompt: string, maxTokens: number): Promise<unknown> {
@@ -37,7 +37,7 @@ async function callWithModel(client: OpenAI, model: string, prompt: string, maxT
     model,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.7,
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
   });
 
   const content = response.choices[0]?.message?.content;

@@ -442,7 +442,7 @@ export async function evaluateReadingFluency(
     model: 'gpt-4.1-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    max_tokens: 1200,
+    max_completion_tokens: 1200,
   });
 
   const content = response.choices[0]?.message?.content;

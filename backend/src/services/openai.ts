@@ -68,7 +68,7 @@ async function generateWordsByPrompt(prompt: string, maxTokens: number): Promise
       },
     ],
     temperature: 0.7,
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
   });
 
   const content = response.choices[0]?.message?.content;
@@ -97,7 +97,7 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
       },
     ],
     temperature: 0.7,
-    max_tokens: 500,
+    max_completion_tokens: 500,
   });
 
   const content = response.choices[0]?.message?.content;
@@ -125,7 +125,7 @@ export async function suggestEnglishExplanation(word: string): Promise<EnglishEx
     model: 'gpt-6-luna',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
-    max_tokens: 300,
+    max_completion_tokens: 300,
   });
 
   const content = response.choices[0]?.message?.content;

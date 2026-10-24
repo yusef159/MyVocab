@@ -74,7 +74,7 @@ export async function generateReadingArticle(
       },
     ],
     temperature: 0.7,
-    max_tokens: 900,
+    max_completion_tokens: 900,
   });
 
   const content = response.choices[0]?.message?.content;

@@ -28,7 +28,7 @@ export async function generateContextPrompt(
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
+    model: 'gpt-6-luna',
     messages: [
       {
         role: 'user',
@@ -36,7 +36,7 @@ export async function generateContextPrompt(
       },
     ],
     temperature: 0.8, // Higher temperature for more creative prompts
-    max_tokens: 500,
+    max_completion_tokens: 500,
   });
 
   const content = response.choices[0]?.message?.content;

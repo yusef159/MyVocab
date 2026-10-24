@@ -56,7 +56,7 @@ export async function analyzeSentence(
       },
     ],
     temperature: 0.7,
-    max_tokens: 1500,
+    max_completion_tokens: 1500,
   });
 
   const content = response.choices[0]?.message?.content;
