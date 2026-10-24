@@ -35,7 +35,6 @@ export async function generateContextPrompt(
         content: prompt,
       },
     ],
-    temperature: 0.8, // Higher temperature for more creative prompts
     max_completion_tokens: 500,
   });
 

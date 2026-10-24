@@ -24,7 +24,6 @@ export async function generateScenarios(
   const response = await openai.chat.completions.create({
     model: 'gpt-6-luna',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
     max_completion_tokens: 1200,
   });
 

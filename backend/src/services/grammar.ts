@@ -36,7 +36,6 @@ async function callWithModel(client: OpenAI, model: string, prompt: string, maxT
   const response = await client.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
     max_completion_tokens: maxTokens,
   });
 

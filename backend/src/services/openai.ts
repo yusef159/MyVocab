@@ -67,7 +67,6 @@ async function generateWordsByPrompt(prompt: string, maxTokens: number): Promise
         content: prompt,
       },
     ],
-    temperature: 0.7,
     max_completion_tokens: maxTokens,
   });
 
@@ -96,7 +95,6 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
         content: prompt,
       },
     ],
-    temperature: 0.7,
     max_completion_tokens: 500,
   });
 
@@ -124,7 +122,6 @@ export async function suggestEnglishExplanation(word: string): Promise<EnglishEx
   const response = await openai.chat.completions.create({
     model: 'gpt-6-luna',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.5,
     max_completion_tokens: 300,
   });
 
