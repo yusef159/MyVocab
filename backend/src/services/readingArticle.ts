@@ -66,7 +66,7 @@ export async function generateReadingArticle(
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
+    model: 'gpt-6-luna',
     messages: [
       {
         role: 'user',

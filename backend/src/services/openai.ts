@@ -60,7 +60,7 @@ async function generateWordsByPrompt(prompt: string, maxTokens: number): Promise
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
+    model: 'gpt-6-luna',
     messages: [
       {
         role: 'user',
@@ -89,7 +89,7 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
+    model: 'gpt-6-luna',
     messages: [
       {
         role: 'user',
@@ -122,7 +122,7 @@ export async function suggestEnglishExplanation(word: string): Promise<EnglishEx
   const openai = getOpenAIClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
+    model: 'gpt-6-luna',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
     max_tokens: 300,
