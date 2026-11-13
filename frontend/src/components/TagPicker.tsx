@@ -17,7 +17,7 @@ function CloseIcon() {
   return <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" d="m6 6 12 12M6 18 18 6" /></svg>;
 }
 
-export default function TagPicker({ value, onChange, disabled = false, label = 'Tags', allowCreate = true, emptyLabel, multiple = true }: {
+export default function TagPicker({ value, onChange, disabled = false, label = 'Tags', allowCreate = true, emptyLabel, multiple = true, untaggedSelected = false, onUntaggedChange }: {
   value: string[];
   onChange: (tags: string[]) => void;
   disabled?: boolean;
@@ -25,6 +25,8 @@ export default function TagPicker({ value, onChange, disabled = false, label = '
   allowCreate?: boolean;
   emptyLabel?: string;
   multiple?: boolean;
+  untaggedSelected?: boolean;
+  onUntaggedChange?: (selected: boolean) => void;
 }) {
   const tags = useVocabStore(s => s.tags);
   const loadTags = useVocabStore(s => s.loadTags);
@@ -63,8 +65,9 @@ export default function TagPicker({ value, onChange, disabled = false, label = '
       </legend>
       <div className="flex flex-wrap items-center gap-2">
         {emptyLabel && (
-          <button type="button" aria-pressed={value.length === 0} onClick={() => { onChange([]); resetControls(); }} className={`${pillClass} ${value.length === 0 ? selectedClass : idleClass}`}>{emptyLabel}</button>
+          <button type="button" aria-pressed={value.length === 0 && !untaggedSelected} onClick={() => { onChange([]); onUntaggedChange?.(false); resetControls(); }} className={`${pillClass} ${value.length === 0 && !untaggedSelected ? selectedClass : idleClass}`}>{emptyLabel}</button>
         )}
+        {onUntaggedChange && <button type="button" aria-pressed={untaggedSelected} onClick={() => onUntaggedChange(!untaggedSelected)} className={`${pillClass} ${untaggedSelected ? selectedClass : idleClass}`}>Untagged</button>}
         {value.map(name => (
           <button type="button" key={name} aria-pressed="true" title="Click to remove tag" onClick={() => choose(name)} className={`${pillClass} ${selectedClass}`}>
             <span className="break-all">{name}</span><CloseIcon />

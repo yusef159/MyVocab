@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { WORD_SORT_OPTIONS, WORD_SORT_STORAGE_KEY, normalizeWordSort, matchesWordTags, sortWords, type WordSort } from '../lib/wordListOptions';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import TagPicker from './TagPicker';
 import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
@@ -944,7 +945,17 @@ export default function WordList() {
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'known' | 'problem' | 'new'>('all');
-  const [showLearningFilter, setShowLearningFilter] = useState(false);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [includeUntagged, setIncludeUntagged] = useState(false);
+  const [sortBy, setSortBy] = useState<WordSort>(() => {
+    try { return normalizeWordSort(window.localStorage.getItem(WORD_SORT_STORAGE_KEY)); }
+    catch { return 'newest'; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(WORD_SORT_STORAGE_KEY, sortBy); }
+    catch { /* Sorting remains usable when browser storage is unavailable. */ }
+  }, [sortBy]);
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [learningMin, setLearningMin] = useState(0);
   const [learningMax, setLearningMax] = useState(100);
@@ -1167,15 +1178,15 @@ export default function WordList() {
     };
   }, []);
 
-  const filteredWords = words.filter((word) => {
+  const filteredWords = useMemo(() => sortWords(words.filter((word) => {
     const matchesSearch = 
       word.english.toLowerCase().includes(searchQuery.toLowerCase()) ||
       word.arabicMeanings.some(m => m.includes(searchQuery));
     const matchesFilter = filterStatus === 'all' || word.status === filterStatus;
     const pct = calculateLearningPercentage(word.correctCount, word.wrongCount);
     const matchesLearning = pct >= learningMin && pct <= learningMax;
-    return matchesSearch && matchesFilter && matchesLearning;
-  });
+    return matchesSearch && matchesFilter && matchesLearning && matchesWordTags(word, selectedTags, includeUntagged);
+  }), sortBy), [words, searchQuery, filterStatus, learningMin, learningMax, selectedTags, includeUntagged, sortBy]);
   const trimmedSearchQuery = searchQuery.trim();
 
   if (isLoading) {
@@ -1191,7 +1202,7 @@ export default function WordList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
           {autoSchedule?.active && (
@@ -1217,136 +1228,147 @@ export default function WordList() {
           className="hidden"
         />
 
-        <div className="relative" ref={dataMenuRef}>
-          <button
-            type="button"
-            onClick={() => setShowDataMenu((prev) => !prev)}
-            aria-expanded={showDataMenu}
-            aria-controls="my-words-data-menu"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700"
-            title="Open import/export tools"
+        <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+          <label htmlFor="my-words-sort" className="text-sm text-gray-400">Sort by</label>
+          <select
+            id="my-words-sort"
+            value={sortBy}
+            onChange={e => setSortBy(normalizeWordSort(e.target.value))}
+            className="w-40 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 sm:w-52"
           >
-            <span className="sr-only">Open data tools menu</span>
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
+            {WORD_SORT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <div className="relative" ref={dataMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowDataMenu((prev) => !prev)}
+              aria-expanded={showDataMenu}
+              aria-controls="my-words-data-menu"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700"
+              title="Open import/export tools"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
-            </svg>
-            <span className="hidden sm:inline">Data</span>
-            <svg
-              className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showDataMenu ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <span className="sr-only">Open data tools menu</span>
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
+              </svg>
+              <span className="hidden sm:inline">Data</span>
+              <svg
+                className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showDataMenu ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
 
-          {showDataMenu && (
-            <div
-              id="my-words-data-menu"
-              className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-700 bg-gray-800/95 p-2 shadow-2xl backdrop-blur"
-            >
-              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Excel</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDataMenu(false);
-                  fileInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
-                title="Import from Excel"
+            {showDataMenu && (
+              <div
+                id="my-words-data-menu"
+                className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-700 bg-gray-800/95 p-2 shadow-2xl backdrop-blur"
               >
-                <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
-                </svg>
-                Import from Excel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDataMenu(false);
-                  handleExport();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
-                title="Export to Excel"
-              >
-                <svg className="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Export to Excel
-              </button>
+                <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Excel</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDataMenu(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                  title="Import from Excel"
+                >
+                  <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 9m4-4v12" />
+                  </svg>
+                  Import from Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDataMenu(false);
+                    handleExport();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                  title="Export to Excel"
+                >
+                  <svg className="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export to Excel
+                </button>
 
-              <div className="my-1 border-t border-gray-700" />
-              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Backup JSON</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDataMenu(false);
-                  handleBackupExport();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
-                title="Export complete backup JSON (words, reviews, streak, grammar)"
-              >
-                <svg className="h-4 w-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7l1 13h12l1-13M10 11v6m4-6v6M9 7V4h6v3" />
-                </svg>
-                Export backup JSON
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDataMenu(false);
-                  backupFileInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
-                title="Import complete backup JSON"
-              >
-                <svg className="h-4 w-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Restore backup JSON
-              </button>
+                <div className="my-1 border-t border-gray-700" />
+                <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Backup JSON</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDataMenu(false);
+                    handleBackupExport();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                  title="Export complete backup JSON (words, reviews, streak, grammar)"
+                >
+                  <svg className="h-4 w-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7l1 13h12l1-13M10 11v6m4-6v6M9 7V4h6v3" />
+                  </svg>
+                  Export backup JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDataMenu(false);
+                    backupFileInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                  title="Import complete backup JSON"
+                >
+                  <svg className="h-4 w-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Restore backup JSON
+                </button>
 
-              <div className="my-1 border-t border-gray-700" />
-              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Migration</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDataMenu(false);
-                  void handleMigrateLegacyData();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
-                title="Migrate legacy browser IndexedDB data to server"
-              >
-                <svg className="h-4 w-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Migrate local data
-              </button>
+                <div className="my-1 border-t border-gray-700" />
+                <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Migration</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDataMenu(false);
+                    void handleMigrateLegacyData();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                  title="Migrate legacy browser IndexedDB data to server"
+                >
+                  <svg className="h-4 w-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8m0 0v8m0-8L8 15m-4 4h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Migrate local data
+                </button>
 
-              <div className="my-1 border-t border-gray-700" />
-              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Schedule</p>
-              <button
-                type="button"
-                onClick={() => void handleRefreshIntervals()}
-                disabled={isRefreshingIntervals}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Recalculate review intervals from history"
-              >
-                <svg className="h-4 w-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                {isRefreshingIntervals ? 'Refreshing…' : 'Refresh intervals'}
-              </button>
-            </div>
-          )}
+                <div className="my-1 border-t border-gray-700" />
+                <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Schedule</p>
+                <button
+                  type="button"
+                  onClick={() => void handleRefreshIntervals()}
+                  disabled={isRefreshingIntervals}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Recalculate review intervals from history"
+                >
+                  <svg className="h-4 w-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {isRefreshingIntervals ? 'Refreshing…' : 'Refresh intervals'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1401,20 +1423,21 @@ export default function WordList() {
         </div>
       </div>
 
-      {/* Learning progress filter (collapsed by default) */}
+      {/* More filters (collapsed by default) */}
       <div className="rounded-lg border border-gray-700 bg-gray-800/50">
         <button
           type="button"
-          onClick={() => setShowLearningFilter((prev) => !prev)}
-          aria-expanded={showLearningFilter}
-          aria-controls="learning-progress-filter-panel"
+          onClick={() => setShowMoreFilters((prev) => !prev)}
+          aria-expanded={showMoreFilters}
+          aria-controls="more-filters-panel"
           className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-700/40"
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-200">Learning progress filter</span>
+            <span className="text-sm font-medium text-gray-200">More filters</span>
+            {(selectedTags.length > 0 || includeUntagged || learningMin > 0 || learningMax < 100) && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">Active</span>}
           </div>
           <svg
-            className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${showLearningFilter ? 'rotate-180' : ''}`}
+            className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${showMoreFilters ? 'rotate-180' : ''}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -1425,12 +1448,25 @@ export default function WordList() {
         </button>
 
         <div
-          id="learning-progress-filter-panel"
-          className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            showLearningFilter ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-          }`}
+          id="more-filters-panel"
+          hidden={!showMoreFilters}
         >
-          <div className="flex flex-col gap-3 border-t border-gray-700 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+          <div className="border-t border-gray-700 px-4 py-4">
+            <TagPicker
+              value={selectedTags}
+              onChange={setSelectedTags}
+              allowCreate={false}
+              emptyLabel="All tags"
+              untaggedSelected={includeUntagged}
+              onUntaggedChange={setIncludeUntagged}
+            />
+            <p className="text-xs text-gray-500">Select tags to show words matching any of them.</p>
+            {(selectedTags.length > 0 || includeUntagged || learningMin > 0 || learningMax < 100) && (
+              <button type="button" onClick={() => { setSelectedTags([]); setIncludeUntagged(false); setLearningMin(0); setLearningMax(100); }} className="mt-3 text-xs text-emerald-400 hover:text-emerald-300">Reset extra filters</button>
+            )}
+          </div>
+          <p className="px-4 pt-3 text-sm font-medium text-gray-300 border-t border-gray-700">Learning progress</p>
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
             <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <label className="flex items-center gap-2 text-sm text-gray-400">
                 <span className="w-8 text-gray-500">Min</span>
@@ -1532,7 +1568,7 @@ export default function WordList() {
             </>
           ) : (
             <>
-              <p className="text-gray-400 text-lg">No words match your search.</p>
+              <p className="text-gray-400 text-lg">No words match your search and filters.</p>
               {trimmedSearchQuery && (
                 <>
                   
