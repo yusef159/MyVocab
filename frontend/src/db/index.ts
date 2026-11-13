@@ -101,12 +101,9 @@ export async function refreshWordIntervals(): Promise<{ updated: number; distrib
   return res.data;
 }
 
-export async function incrementWrongCount(id: string): Promise<void> {
-  await axios.post(`${API_URL}/api/data/words/${id}/review`, { result: 'problem' });
-}
-
-export async function incrementCorrectCount(id: string): Promise<void> {
-  await axios.post(`${API_URL}/api/data/words/${id}/review`, { result: 'known' });
+export async function saveReview(id: string, result: 'known' | 'problem', reviewId: string): Promise<StreakData> {
+  const response = await axios.post<{ streak: StreakData }>('/api/data/words/' + id + '/review', { result, reviewId });
+  return response.data.streak;
 }
 
 /**

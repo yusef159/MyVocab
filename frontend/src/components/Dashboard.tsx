@@ -10,7 +10,8 @@ import {
 } from 'recharts';
 import { getRiskWords } from '../db';
 import { useVocabStore } from '../stores/vocabStore';
-import RiskWordsReminder from './RiskWordsReminder';
+import QuickQuizzes from './QuickQuizzes';
+import WordMastery from './WordMastery';
 
 type ReviewRangeKey =
   | 'today'
@@ -126,6 +127,8 @@ function CustomTooltip(props: any) {
 
 export default function Dashboard() {
   const {
+    words,
+    loadWords,
     stats,
     streak,
     streakDailyGoal,
@@ -139,20 +142,37 @@ export default function Dashboard() {
   const [riskCount, setRiskCount] = useState(0);
 
   const [reviewRange, setReviewRange] = useState<ReviewRangeKey>('lastMonth');
+  const [today, setToday] = useState(() => toDateStr(new Date()));
 
-  const reviewsToday = streak?.reviewsToday || 0;
+  const reviewsToday = streak?.reviewsDate === today ? streak.reviewsToday : 0;
   const dailyGoal = Math.max(1, streakDailyGoal || 20);
   const dailyProgress = Math.min(1, reviewsToday / dailyGoal);
   const dailyProgressPercent = Math.round(dailyProgress * 100);
 
   useEffect(() => {
+    // Match the UTC review dates used by the API, including tabs left open overnight.
+    const updateDay = () => setToday(toDateStr(new Date()));
+    const midnight = new Date();
+    midnight.setUTCHours(24, 0, 0, 0);
+    const timer = window.setTimeout(updateDay, midnight.getTime() - Date.now() + 50);
+    window.addEventListener('focus', updateDay);
+    document.addEventListener('visibilitychange', updateDay);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', updateDay);
+      document.removeEventListener('visibilitychange', updateDay);
+    };
+  }, [today]);
+
+  useEffect(() => {
+    loadWords();
     loadStats();
     loadStreak();
     loadStreakDailyGoal();
     getRiskWords()
       .then((items) => setRiskCount(items.length))
       .catch(() => setRiskCount(0));
-  }, [loadStats, loadStreak, loadStreakDailyGoal]);
+  }, [loadWords, loadStats, loadStreak, loadStreakDailyGoal]);
 
   const loadReviewData = useCallback(async () => {
     if (reviewRange === 'allTime') {
@@ -177,7 +197,7 @@ export default function Dashboard() {
     <div className="space-y-8">
       <h2 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h2>
 
-      <RiskWordsReminder />
+      <QuickQuizzes />
 
       {/* Streak Section — fills with daily review progress toward the streak goal */}
       <div className="relative overflow-hidden rounded-2xl border border-orange-500/40 bg-gray-800/80 text-white">
@@ -297,6 +317,8 @@ export default function Dashboard() {
       )}
 
       {/* Review activity graph */}
+      <WordMastery words={words} />
+
       <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 transition-opacity duration-300">
         <h3 className="text-lg font-semibold text-white mb-4">Words reviewed</h3>
         <div className="flex flex-wrap gap-2 mb-4">

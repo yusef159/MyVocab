@@ -1,3 +1,4 @@
+import { newReviewId } from '../lib/reviewSubmission';
 import { create } from 'zustand';
 import axios from 'axios';
 import type {
@@ -22,8 +23,7 @@ import {
   getProblemStreakGoal as dbGetProblemStreakGoal,
   getWordsByStatus,
   addWord,
-  incrementWrongCount,
-  incrementCorrectCount,
+  saveReview,
   deleteWord,
   bulkAddWords,
   getWordStats,
@@ -64,7 +64,9 @@ function applyLocalReviewUpdate(
         wrongCount: word.wrongCount + 1,
         status: 'problem' as const,
         streak: 0,
-        interval: Math.max(1, Math.floor(word.interval / 2)),
+        interval: word.status === 'known'
+          ? Math.max(1, Math.floor(word.interval / 2))
+          : word.interval,
         lastReviewedAt: now,
       };
     }
@@ -218,10 +220,10 @@ interface VocabState {
     englishMeaning?: string
   ) => Promise<{ success: boolean; isDuplicate: boolean }>;
   
-  markAsKnown: (id: string) => Promise<void>;
-  markAsProblem: (id: string) => Promise<void>;
-  markProblemAsKnown: (id: string) => Promise<void>;
-  markProblemAsStillProblem: (id: string) => Promise<void>;
+  markAsKnown: (id: string, reviewId?: string) => Promise<boolean>;
+  markAsProblem: (id: string, reviewId?: string) => Promise<boolean>;
+  markProblemAsKnown: (id: string, reviewId?: string) => Promise<boolean>;
+  markProblemAsStillProblem: (id: string, reviewId?: string) => Promise<boolean>;
   removeWord: (id: string) => Promise<void>;
   updateWordContent: (
     id: string,
@@ -548,62 +550,36 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  markAsKnown: async (id) => {
-    set((state) => ({
-      ...applyLocalReviewUpdate(state, id, 'known'),
-      error: null,
-    }));
-
+  markAsKnown: async (id, reviewId = newReviewId()) => {
     try {
-      await incrementCorrectCount(id);
-      const streak = await updateStreak();
-      set({ streak, error: null });
-    } catch (error) {
-      await Promise.allSettled([get().loadWords(), get().loadStats(), get().loadStreak()]);
-      set({ error: 'Failed to update word' });
+      const streak = await saveReview(id, 'known', reviewId);
+      set((state) => ({ ...applyLocalReviewUpdate(state, id, 'known'), streak, error: null }));
+      return true;
+    } catch {
+      set({ error: 'Review could not be confirmed. Please retry before continuing.' });
+      return false;
     }
   },
-
-  markAsProblem: async (id) => {
-    set((state) => ({
-      ...applyLocalReviewUpdate(state, id, 'problem'),
-      error: null,
-    }));
-
+  markAsProblem: async (id, reviewId = newReviewId()) => {
     try {
-      await incrementWrongCount(id);
-      const streak = await updateStreak();
-      set({ streak, error: null });
-    } catch (error) {
-      await Promise.allSettled([get().loadWords(), get().loadStats(), get().loadStreak()]);
-      set({ error: 'Failed to update word' });
+      const streak = await saveReview(id, 'problem', reviewId);
+      set((state) => ({ ...applyLocalReviewUpdate(state, id, 'problem'), streak, error: null }));
+      return true;
+    } catch {
+      set({ error: 'Review could not be confirmed. Please retry before continuing.' });
+      return false;
     }
   },
-
-  markProblemAsKnown: async (id) => {
-    try {
-      await incrementCorrectCount(id);
-      await updateStreak();
-      await get().loadProblemWords();
-      await get().loadStats();
-      await get().loadStreak();
-    } catch (error) {
-      set({ error: 'Failed to update word' });
-    }
+  markProblemAsKnown: async (id, reviewId) => {
+    const saved = await get().markAsKnown(id, reviewId);
+    if (saved) await get().loadProblemWords();
+    return saved;
   },
-
-  markProblemAsStillProblem: async (id) => {
-    try {
-      await incrementWrongCount(id);
-      await updateStreak();
-      await get().loadProblemWords();
-      await get().loadStats();
-      await get().loadStreak();
-    } catch (error) {
-      set({ error: 'Failed to update word' });
-    }
+  markProblemAsStillProblem: async (id, reviewId) => {
+    const saved = await get().markAsProblem(id, reviewId);
+    if (saved) await get().loadProblemWords();
+    return saved;
   },
-
   removeWord: async (id) => {
     try {
       await deleteWord(id);

@@ -1,3 +1,4 @@
+import { createReviewSubmission } from '../lib/reviewSubmission';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
@@ -227,7 +228,20 @@ export default function Flashcards() {
   const [previousReviewsToday, setPreviousReviewsToday] = useState<number | null>(null);
 
   // Audio state: word auto-speak, sentence auto-speak (toggle via back-card icon)
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    try {
+      return localStorage.getItem('myvocab.flashcards.muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('myvocab.flashcards.muted', String(isMuted));
+    } catch {
+      // Keep the toggle usable when browser storage is unavailable.
+    }
+  }, [isMuted]);
   const [isSentenceAutoSpeak, setIsSentenceAutoSpeak] = useState(false);
   const lastSpokenWordRef = useRef<string | null>(null);
   const lastSpokenSentenceRef = useRef<string | null>(null);
@@ -276,11 +290,17 @@ export default function Flashcards() {
     };
   }, [words]);
 
-  // Start a session with risk words when navigated from RiskWordsReminder
+  // Start dashboard quizzes directly in the existing flashcard flow.
   useEffect(() => {
-    const riskWordIds = (location.state as { riskWordIds?: string[] } | null)?.riskWordIds;
-    if (!riskWordIds?.length || words.length === 0 || sessionStarted) return;
-    const sessionWords = shuffleArray(words.filter((w) => riskWordIds.includes(w.id)));
+    const state = location.state as {
+      riskWordIds?: string[];
+      quickQuiz?: { wordIds: string[]; filterType: 'risk' | 'problem' };
+    } | null;
+    const wordIds = state?.quickQuiz?.wordIds ?? state?.riskWordIds;
+    const sessionFilter = state?.quickQuiz?.filterType ?? 'risk';
+    if (!wordIds?.length || words.length === 0 || sessionStarted) return;
+    const selectedIds = new Set(wordIds);
+    const sessionWords = shuffleArray(words.filter((w) => selectedIds.has(w.id)));
     if (sessionWords.length === 0) return;
     navigate('/flashcards', { replace: true, state: {} });
     setShuffledWords(sessionWords);
@@ -289,12 +309,13 @@ export default function Flashcards() {
     setSessionComplete(false);
     setSessionKnownCount(0);
     setSessionProblemCount(0);
+    setFilterType(sessionFilter);
     setSessionStarted(true);
-    setIsRiskReminderSession(true);
+    setIsRiskReminderSession(sessionFilter === 'risk');
     persistActiveSession({
       wordIds: sessionWords.map((w) => w.id),
       currentIndex: 0,
-      filterType: 'risk',
+      filterType: sessionFilter,
       dateRange: 30,
       savedAt: new Date().toISOString(),
       knownCount: 0,
@@ -564,25 +585,32 @@ export default function Flashcards() {
     [currentIndex, shuffledWords, filterType, dateRange, setLastCompletedSession, persistActiveSession]
   );
 
-  const handleKnow = () => {
-    if (currentWord) {
-      const reviewedWordId = currentWord.id;
-      const nextKnown = sessionKnownCount + 1;
-      setSessionKnownCount(nextKnown);
-      moveToNext({ knownCount: nextKnown, problemCount: sessionProblemCount });
-      void markAsKnown(reviewedWordId);
+  const reviewSubmission = useRef(createReviewSubmission());
+  const [isSavingReview, setIsSavingReview] = useState(false);
+  const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
+  const submitReview = async (result: 'known' | 'problem') => {
+    if (!currentWord || isSavingReview) return;
+    setIsSavingReview(true);
+    setReviewSaveError(null);
+    try {
+      const saved = await reviewSubmission.current(currentWord.id, result,
+        pending => (pending.result === 'known' ? markAsKnown : markAsProblem)(pending.wordId, pending.id),
+        savedResult => {
+          const knownCount = sessionKnownCount + (savedResult === 'known' ? 1 : 0);
+          const problemCount = sessionProblemCount + (savedResult === 'problem' ? 1 : 0);
+          setSessionKnownCount(knownCount);
+          setSessionProblemCount(problemCount);
+          moveToNext({ knownCount, problemCount });
+        });
+      if (!saved) setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
+    } catch {
+      setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
+    } finally {
+      setIsSavingReview(false);
     }
   };
-
-  const handleDontKnow = () => {
-    if (currentWord) {
-      const reviewedWordId = currentWord.id;
-      const nextProblem = sessionProblemCount + 1;
-      setSessionProblemCount(nextProblem);
-      moveToNext({ knownCount: sessionKnownCount, problemCount: nextProblem });
-      void markAsProblem(reviewedWordId);
-    }
-  };
+  const handleKnow = () => submitReview('known');
+  const handleDontKnow = () => submitReview('problem');
 
   const handleCardTouchEnd = () => {
     if (isSwipeSettling) return;
@@ -2013,15 +2041,18 @@ export default function Flashcards() {
       </div>
       </div>
 
+      {reviewSaveError && <p role="alert" className="text-red-300 mb-3">{reviewSaveError}</p>}
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <button
+          disabled={isSavingReview}
           onClick={handleDontKnow}
           className="flex-1 px-6 py-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-500 transition-colors"
         >
           I Don't Know
         </button>
         <button
+          disabled={isSavingReview}
           onClick={handleKnow}
           className="flex-1 px-6 py-4 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 transition-colors"
         >

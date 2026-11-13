@@ -850,10 +850,10 @@ export function addWord(input: {
   return { id, isDuplicate: false };
 }
 
-function logWordReviewEvent(wordId: string, result: ReviewResult, createdAt = nowIso()): void {
+function logWordReviewEvent(wordId: string, result: ReviewResult, createdAt = nowIso(), eventId: string = randomUUID()): void {
   db.prepare(
     'INSERT INTO word_review_events (id, word_id, result, delta, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(randomUUID(), wordId, result, result === 'known' ? 1 : -1, createdAt);
+  ).run(eventId, wordId, result, result === 'known' ? 1 : -1, createdAt);
 }
 
 function incrementDailyReviewCount(date: string): void {
@@ -872,7 +872,11 @@ export function getStreakData(): StreakData {
       'INSERT INTO streak_data (id, current_streak, longest_streak, last_activity_date, reviews_today, reviews_date) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(streak.id, streak.currentStreak, streak.longestStreak, streak.lastActivityDate, streak.reviewsToday, streak.reviewsDate);
   }
-  return streak;
+  // Reading the dashboard must not expose a previous day's review total.
+  const today = new Date().toISOString().split('T')[0];
+  return streak.reviewsDate === today
+    ? streak
+    : { ...streak, reviewsToday: 0, reviewsDate: today };
 }
 
 export function updateStreak(): StreakData {
@@ -937,7 +941,7 @@ export function updateStreak(): StreakData {
   return updated;
 }
 
-export function incrementWrongCount(id: string): void {
+export function incrementWrongCount(id: string, eventId?: string): void {
   const row = db.prepare('SELECT * FROM words WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!row) return;
 
@@ -947,9 +951,10 @@ export function incrementWrongCount(id: string): void {
     correctCount: word.correctCount,
     status: 'problem' as WordStatus,
     streak: 0,
-    // Halve the spaced-repetition interval on a miss so the word resurfaces sooner
-    // (e.g. 8 -> 4), keeping a floor of the initial interval instead of resetting to it.
-    interval: Math.max(INITIAL_KNOWN_INTERVAL, Math.floor(word.interval / 2)),
+    // Shorten the interval only when a known word becomes a problem word.
+    interval: word.status === 'known'
+      ? Math.max(INITIAL_KNOWN_INTERVAL, Math.floor(word.interval / 2))
+      : word.interval,
     lastReviewedAt: nowIso(),
   };
 
@@ -965,10 +970,10 @@ export function incrementWrongCount(id: string): void {
     id
   );
 
-  logWordReviewEvent(id, 'problem', updates.lastReviewedAt);
+  logWordReviewEvent(id, 'problem', updates.lastReviewedAt, eventId);
 }
 
-export function incrementCorrectCount(id: string): void {
+export function incrementCorrectCount(id: string, eventId?: string): void {
   const row = db.prepare('SELECT * FROM words WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!row) return;
 
@@ -1010,7 +1015,7 @@ export function incrementCorrectCount(id: string): void {
     'UPDATE words SET correct_count = ?, wrong_count = ?, status = ?, streak = ?, interval = ?, last_reviewed_at = ? WHERE id = ?'
   ).run(newCorrect, word.wrongCount, newStatus, newStreak, newInterval, reviewedAt, id);
 
-  logWordReviewEvent(id, 'known', reviewedAt);
+  logWordReviewEvent(id, 'known', reviewedAt, eventId);
 }
 
 export function updateWordReviewCounts(id: string, correctCount: number, wrongCount: number): void {
@@ -1404,4 +1409,19 @@ export function importFullBackup(payload: BackupPayloadV1): {
     dailyReviewCounts: payload.dailyReviewCounts.length,
     grammarProgress: payload.grammarProgress.length,
   };
+}
+
+/** Commit review and activity together; retrying an event ID never counts twice. */
+export function recordReview(wordId: string, result: ReviewResult, reviewId: string): StreakData {
+ return db.transaction(() => {
+  const previous = db.prepare('SELECT word_id, result FROM word_review_events WHERE id = ?').get(reviewId) as { word_id: string; result: string } | undefined;
+  if (previous) {
+   if (previous.word_id !== wordId || previous.result !== result) throw new Error('Review ID conflict');
+   return getStreakData();
+  }
+  if (!db.prepare('SELECT id FROM words WHERE id = ?').get(wordId)) throw new Error('Word not found');
+  if (result === 'known') incrementCorrectCount(wordId, reviewId);
+  else incrementWrongCount(wordId, reviewId);
+  return updateStreak();
+ })();
 }

@@ -93,3 +93,13 @@ MyVocab cursor/
 ## License
 
 MIT
+
+## Review reliability
+
+Flashcard answers are saved before advancing or completing the session. The backend commits the word update, history event, daily count, and streak in one SQLite transaction. Retrying an unconfirmed answer in the current session reuses its review ID to avoid counting it twice.
+
+Daily activity continues to use UTC calendar dates; existing history is not shifted. Adding a word still counts as activity. Practice tests remain separate from flashcard review counts.
+
+Run regression checks with `cd backend` then `npm test`. The test launcher sets a unique temporary SQLite path before loading application modules, overriding any personal DB_PATH. Tests cover transaction rollback, duplicate requests, missing words, UTC rollover and streak goals, unchanged backup fields, and waiting/retrying before session advancement. CI runs these tests before building.
+
+No database schema or JSON backup format changes are required by this update. Existing Google Drive destination and scheduling settings are unchanged.

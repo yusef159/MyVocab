@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --import ./src/testSetup.ts --test src/**/*.test.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",

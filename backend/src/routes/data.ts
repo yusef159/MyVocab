@@ -19,8 +19,7 @@ import {
   getWordStats,
   getWordsByStatus,
   importFullBackup,
-  incrementCorrectCount,
-  incrementWrongCount,
+  recordReview,
   resetGrammarProgressForSkill,
   saveGrammarProgress,
   saveAppStateJson,
@@ -212,18 +211,17 @@ router.patch('/words/:id/review-counts', (req, res) => {
 });
 
 router.post('/words/:id/review', (req, res) => {
-  const parsed = z.object({ result: z.enum(['known', 'problem']) }).safeParse(req.body);
+  const parsed = z.object({ result: z.enum(['known', 'problem']), reviewId: z.string().uuid() }).safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid request', details: parsed.error.errors });
   }
 
-  if (parsed.data.result === 'known') {
-    incrementCorrectCount(req.params.id);
-  } else {
-    incrementWrongCount(req.params.id);
+  try {
+    res.json({ ok: true, streak: recordReview(req.params.id, parsed.data.result, parsed.data.reviewId) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save review';
+    res.status(message === 'Word not found' ? 404 : 500).json({ error: message });
   }
-
-  res.json({ ok: true });
 });
 
 router.delete('/words/:id', (req, res) => {
