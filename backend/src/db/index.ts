@@ -13,6 +13,9 @@ export interface Word {
   exampleSentences: string[];
   /** Optional concise English explanation of the word */
   englishMeaning?: string;
+  tags?: string[];
+  /** Legacy single-tag backups and clients. */
+  tag?: string;
   topic?: string;
   status: WordStatus;
   wrongCount: number;
@@ -145,6 +148,7 @@ export type AppStateKey =
 export interface BackupPayloadV1 {
   schemaVersion: 1;
   exportedAt: string;
+  tags?: { name: string; lastUsedAt: string }[];
   words: Word[];
   wordReviewEvents: WordReviewEvent[];
   streakData: StreakData[];
@@ -236,6 +240,7 @@ function toWord(row: Record<string, unknown>): Word {
   return {
     id: String(row.id),
     english: normalizeEnglishWord(String(row.english)),
+    tags: parseJsonArray(row.tags as string | null),
     arabicMeanings: parseJsonArray(String(row.arabic_meanings ?? '[]')),
     exampleSentences: normalizeSentences(parseJsonArray(String(row.example_sentences ?? '[]'))),
     englishMeaning: row.english_meaning ? String(row.english_meaning) : undefined,
@@ -481,6 +486,17 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE words ADD COLUMN english_meaning TEXT');
   }
 
+  if (!wordColumns.some(column => column.name === 'tag')) db.exec('ALTER TABLE words ADD COLUMN tag TEXT');
+  db.exec('CREATE TABLE IF NOT EXISTS word_tags (name TEXT PRIMARY KEY, last_used_at TEXT NOT NULL)');
+  if (!wordColumns.some(column => column.name === 'tags')) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE words ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
+      const rows = db.prepare('SELECT id, tag FROM words WHERE tag IS NOT NULL').all() as { id: string; tag: string }[];
+      for (const row of rows) {
+        db.prepare('UPDATE words SET tags = ? WHERE id = ?').run(JSON.stringify([row.tag]), row.id);
+      }
+    })();
+  }
   backfillEnglishWordLowercase();
 }
 
@@ -815,11 +831,49 @@ export function getWordsByStatus(status: WordStatus): Word[] {
   return rows.map(toWord);
 }
 
+export function getTags(): { name: string; lastUsedAt: string }[] {
+  return db.prepare('SELECT name, last_used_at AS lastUsedAt FROM word_tags ORDER BY last_used_at DESC, rowid DESC').all() as { name: string; lastUsedAt: string }[];
+}
+
+function useTag(value: string | null | undefined, touch = true): string | null {
+  const name = value?.trim();
+  if (!name) return null;
+  const tags = getTags();
+  const existing = tags.find(tag => tag.name.toLowerCase() === name.toLowerCase());
+  if (existing && !touch) return existing.name;
+  const latestUsage = tags.length ? Date.parse(tags[0].lastUsedAt) : 0;
+  const lastUsedAt = new Date(Math.max(Date.now(), latestUsage + 1)).toISOString();
+  const canonical = existing?.name ?? name;
+  db.prepare('INSERT INTO word_tags (name, last_used_at) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET last_used_at = excluded.last_used_at').run(canonical, lastUsedAt);
+  return canonical;
+}
+
+function setWordTags(id: string, values: string[]): void {
+  db.transaction(() => {
+    const row = db.prepare('SELECT tags FROM words WHERE id = ?').get(id) as { tags: string } | undefined;
+    if (!row) return;
+    const previous = parseJsonArray(row.tags).map(name => name.toLowerCase());
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const value of values) {
+      const key = value.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const name = useTag(value, !previous.includes(key));
+      if (name) names.push(name);
+    }
+    db.prepare('UPDATE words SET tags = ?, tag = NULL WHERE id = ?').run(JSON.stringify(names), id);
+  })();
+}
+
 export function addWord(input: {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
   englishMeaning?: string;
+  tags?: string[];
+  /** Legacy single-tag backups and clients. */
+  tag?: string;
   topic?: string;
 }): { id: string | null; isDuplicate: boolean } {
   const english = normalizeEnglishWord(input.english);
@@ -847,6 +901,7 @@ export function addWord(input: {
     nowIso()
   );
 
+  setWordTags(id, input.tags ?? (input.tag ? [input.tag] : []));
   return { id, isDuplicate: false };
 }
 
@@ -1041,11 +1096,12 @@ export function updateWordReviewCounts(id: string, correctCount: number, wrongCo
 
 export function updateWordContent(
   id: string,
-  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null }
+  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null; tags?: string[]; tag?: string | null }
 ): void {
   const current = db.prepare('SELECT * FROM words WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!current) return;
 
+  if (updates.tags !== undefined || updates.tag !== undefined) setWordTags(id, updates.tags ?? (updates.tag ? [updates.tag] : []));
   const word = toWord(current);
   const nextArabic = updates.arabicMeanings ?? word.arabicMeanings;
   const nextSentences = updates.exampleSentences ? normalizeSentences(updates.exampleSentences) : word.exampleSentences;
@@ -1306,6 +1362,7 @@ export function exportFullBackup(): BackupPayloadV1 {
     schemaVersion: 1,
     exportedAt: nowIso(),
     words,
+    tags: getTags(),
     wordReviewEvents,
     streakData,
     dailyReviewCounts,
@@ -1345,6 +1402,7 @@ export function importFullBackup(payload: BackupPayloadV1): {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM word_review_events').run();
     db.prepare('DELETE FROM words').run();
+    db.prepare('DELETE FROM word_tags').run();
     db.prepare('DELETE FROM streak_data').run();
     db.prepare('DELETE FROM daily_review_counts').run();
     db.prepare('DELETE FROM grammar_progress').run();
@@ -1365,6 +1423,13 @@ export function importFullBackup(payload: BackupPayloadV1): {
         word.createdAt,
         word.lastReviewedAt ?? null
       );
+    }
+
+    for (const word of payload.words) {
+      setWordTags(word.id, word.tags ?? (word.tag ? [word.tag] : []));
+    }
+    for (const tag of payload.tags ?? []) {
+      db.prepare('INSERT INTO word_tags (name, last_used_at) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET last_used_at = excluded.last_used_at').run(tag.name, tag.lastUsedAt);
     }
 
     for (const event of payload.wordReviewEvents) {

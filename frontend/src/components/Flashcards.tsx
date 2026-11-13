@@ -1,3 +1,5 @@
+import TagPicker from './TagPicker';
+import { filterWords, calculateLearningPercentage, type FilterType, type ProgressFilter } from '../lib/flashcardFilters';
 import { createReviewSubmission } from '../lib/reviewSubmission';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -85,9 +87,6 @@ function highlightWordInSentence(sentence: string, word: string): JSX.Element {
   );
 }
 
-type FilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
-type ProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
-
 const DATE_OPTIONS = [
   { label: 'Today', days: 0 },
   { label: 'Today And Yesterday', days: 2 },
@@ -97,80 +96,6 @@ const DATE_OPTIONS = [
   { label: 'Last 3 Months', days: 90 },
   { label: 'Last 6 Months', days: 180 },
 ];
-
-// Calculate learning progress percentage
-function calculateLearningPercentage(correctCount: number, wrongCount: number): number {
-  const total = correctCount + wrongCount;
-  if (total === 0) return 0;
-  return Math.round((correctCount / total) * 100);
-}
-
-// Filter words based on learning progress
-function filterByProgress(words: Word[], progressFilter: ProgressFilter): Word[] {
-  if (progressFilter === 'all') return words;
-  
-  return words.filter(w => {
-    const progress = calculateLearningPercentage(w.correctCount, w.wrongCount);
-    switch (progressFilter) {
-      case 'moderate':
-        return progress >= 66 && progress < 90;
-      case 'hard':
-        return progress >= 33 && progress < 66;
-      case 'very hard':
-        return progress < 33;
-      default:
-        return true;
-    }
-  });
-}
-
-// Filter words based on selection
-function filterWords(
-  words: Word[],
-  riskWords: Word[],
-  filterType: FilterType,
-  dateRange: number,
-  progressFilter?: ProgressFilter
-): Word[] {
-  const now = new Date();
-  switch (filterType) {
-    case 'new':
-      return words.filter(w => w.status === 'new');
-    case 'problem': {
-      // Only show words with status "problem" (not known)
-      let problemWords = words.filter(w => w.status === 'problem');
-      
-      // Apply learning progress filter if specified
-      if (progressFilter) {
-        problemWords = filterByProgress(problemWords, progressFilter);
-      }
-      
-      return problemWords;
-    }
-    case 'all': {
-      // Apply learning progress filter if specified
-      if (progressFilter) {
-        return filterByProgress(words, progressFilter);
-      }
-      return words;
-    }
-    case 'risk':
-      return riskWords;
-    case 'date': {
-      const cutoff =
-        dateRange === 0
-          ? (() => {
-              const startOfToday = new Date(now);
-              startOfToday.setHours(0, 0, 0, 0);
-              return startOfToday;
-            })()
-          : new Date(now.getTime() - dateRange * 24 * 60 * 60 * 1000);
-      return words.filter(w => new Date(w.createdAt) >= cutoff);
-    }
-    default:
-      return words;
-  }
-}
 
 export default function Flashcards() {
   const {
@@ -196,12 +121,20 @@ export default function Flashcards() {
   // Session options state
   const [sessionStarted, setSessionStarted] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [selectedTag, setSelectedTag] = useState('');
+  const taggedWords = useMemo(() => selectedTag ? words.filter(w => w.tags?.includes(selectedTag)) : words, [words, selectedTag]);
   const [dateRange, setDateRange] = useState(30);
   const [sessionSize, setSessionSize] = useState(20);
   const [sessionSizeLoaded, setSessionSizeLoaded] = useState(false);
   const [problemProgressFilter, setProblemProgressFilter] = useState<ProgressFilter>('all');
   const [allWordsProgressFilter, setAllWordsProgressFilter] = useState<ProgressFilter>('all');
   const [riskWords, setRiskWords] = useState<Word[]>([]);
+  const taggedRiskWords = useMemo(() => selectedTag ? riskWords.filter(w => w.tags?.includes(selectedTag)) : riskWords, [riskWords, selectedTag]);
+  const eligibleWords = useMemo(() => filterWords(
+    words, riskWords, filterType, dateRange,
+    filterType === 'problem' ? problemProgressFilter : filterType === 'all' ? allWordsProgressFilter : undefined,
+    selectedTag
+  ), [words, riskWords, filterType, dateRange, problemProgressFilter, allWordsProgressFilter, selectedTag]);
   const [activeSessionSnapshot, setActiveSessionSnapshot] = useState<FlashcardSessionSnapshot | null>(null);
 
   // Flashcard session state
@@ -445,6 +378,8 @@ export default function Flashcards() {
 
   // Calculate word counts for each filter option
   const filterCounts = useMemo(() => {
+    const words = taggedWords;
+    const riskWords = taggedRiskWords;
     const now = new Date();
     const problemWords = words.filter(w => w.status === 'problem');
     return {
@@ -497,7 +432,7 @@ export default function Flashcards() {
         };
       }),
     };
-  }, [words, riskWords.length]);
+  }, [taggedWords, taggedRiskWords]);
 
   const currentWord = shuffledWords[currentIndex];
 
@@ -749,19 +684,7 @@ export default function Flashcards() {
   }, [sessionStarted, sessionComplete, handleKnow, handleDontKnow, handleFlip]);
 
   const startSession = () => {
-    const progressFilter = filterType === 'problem' 
-      ? problemProgressFilter 
-      : filterType === 'all' 
-        ? allWordsProgressFilter 
-        : undefined;
-    
-    const filtered = filterWords(
-      words,
-      riskWords,
-      filterType,
-      dateRange,
-      progressFilter
-    );
+    const filtered = eligibleWords;
     if (filtered.length > 0) {
       const requested = Math.max(1, Number(sessionSize) || 20);
       const takeCount = Math.min(requested, filtered.length);
@@ -834,27 +757,9 @@ export default function Flashcards() {
     });
   };
 
-  // Get the current count for the selected date range
-  const getDateRangeCount = () => {
-    const found = filterCounts.date.find(d => d.days === dateRange);
-    return found ? found.count : 0;
-  };
+  const getDateRangeCount = () => filterCounts.date.find(d => d.days === dateRange)?.count ?? 0;
 
-  // Get count for current filter selection
-  const getSelectedFilterCount = () => {
-    switch (filterType) {
-      case 'new':
-        return filterCounts.new;
-      case 'problem':
-        return filterCounts.problem;
-      case 'risk':
-        return filterCounts.risk;
-      case 'date':
-        return getDateRangeCount();
-      default:
-        return filterCounts.all;
-    }
-  };
+  const getSelectedFilterCount = () => eligibleWords.length;
 
   // Number of words we'll actually use: default 20, clamped to 1..available
   const getEffectiveSessionSize = () => {
@@ -1519,6 +1424,18 @@ export default function Flashcards() {
             </label>
           </div>
 
+          <div className="mt-4 p-4 rounded-lg border border-gray-600 bg-gray-700/30">
+            <TagPicker
+              value={selectedTag ? [selectedTag] : []}
+              onChange={tags => setSelectedTag(tags[0] ?? '')}
+              multiple={false}
+              label="Filter by tag"
+              allowCreate={false}
+              emptyLabel="All tags"
+            />
+            <p role="status" className="text-gray-300 text-sm mt-2">{getSelectedFilterCount()} {getSelectedFilterCount() === 1 ? 'word matches' : 'words match'} your quiz filters.</p>
+          </div>
+
           {/* Number of words */}
           <div className="mt-4 p-4 rounded-lg border border-gray-600 bg-gray-700/30">
             <label className="block text-white font-medium mb-2">Number of words</label>
@@ -1543,7 +1460,7 @@ export default function Flashcards() {
               <span className="text-gray-400 text-sm">
                 {getSelectedFilterCount() > 0
                   ? `Session will use ${getEffectiveSessionSize()} of ${getSelectedFilterCount()} available`
-                  : 'Select a filter above'}
+                  : 'No words match your quiz filters'}
               </span>
             </div>
           </div>

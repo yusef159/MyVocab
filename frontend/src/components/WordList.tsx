@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import TagPicker from './TagPicker';
 import { useVocabStore } from '../stores/vocabStore';
 import * as XLSX from 'xlsx';
 import type { Word, WordReviewEvent } from '../types';
@@ -157,6 +158,9 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   const isExplainingLoading = useVocabStore((s) => s.isExplainingLoading);
   const problemStreakGoal = useVocabStore((s) => s.problemStreakGoal);
 
+  const [tagSaving, setTagSaving] = useState(false);
+  const [tagError, setTagError] = useState('');
+  const setWordTags = useVocabStore(s => s.setWordTags);
   const [mode, setMode] = useState<WordInfoModalMode>('view');
   const [editMeanings, setEditMeanings] = useState<string[]>([]);
   const [editSentences, setEditSentences] = useState<string[]>(['', '', '']);
@@ -919,6 +923,16 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
             </div>
           </>
         )}
+        <div className="mt-6 pt-6 border-t border-gray-700">
+          <TagPicker value={word.tags ?? []} disabled={tagSaving} onChange={tags => {
+            setTagSaving(true);
+            setTagError('');
+            void setWordTags(word.id, tags)
+              .catch(() => setTagError('Could not save tag. Please try again.'))
+              .finally(() => setTagSaving(false));
+          }} />
+          {tagError && <p role="alert" className="text-red-400 text-sm mb-3">{tagError}</p>}
+        </div>
       </div>
     </div>
   );

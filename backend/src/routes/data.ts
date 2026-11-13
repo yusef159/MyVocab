@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   addWord,
+  getTags,
   bulkAddWords,
   deleteWord,
   exportFullBackup,
@@ -44,6 +45,8 @@ const addWordSchema = z.object({
   arabicMeanings: z.array(z.string()).default([]),
   exampleSentences: z.array(z.string()).default(['']),
   englishMeaning: z.string().optional(),
+  tags: z.array(z.string().trim().min(1).max(80)).optional(),
+  tag: z.string().trim().min(1).max(80).optional(),
   topic: z.string().optional(),
 });
 
@@ -51,6 +54,8 @@ const updateWordContentSchema = z.object({
   arabicMeanings: z.array(z.string()).optional(),
   exampleSentences: z.array(z.string()).optional(),
   englishMeaning: z.string().nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(80)).optional(),
+  tag: z.string().trim().min(1).max(80).nullable().optional(),
 });
 
 const updateWordReviewCountsSchema = z.object({
@@ -100,6 +105,7 @@ const appStateKeySchema = z.enum([
 const backupSchema = z.object({
   schemaVersion: z.literal(1),
   exportedAt: z.string(),
+  tags: z.array(z.object({ name: z.string().trim().min(1).max(80), lastUsedAt: z.string() })).optional(),
   words: z.array(
     z.object({
       id: z.string(),
@@ -107,6 +113,8 @@ const backupSchema = z.object({
       arabicMeanings: z.array(z.string()),
       exampleSentences: z.array(z.string()),
       englishMeaning: z.string().optional(),
+      tags: z.array(z.string().trim().min(1).max(80)).optional(),
+      tag: z.string().trim().min(1).max(80).optional(),
       topic: z.string().optional(),
       status: wordStatusSchema,
       wrongCount: z.number().int().min(0),
@@ -162,6 +170,8 @@ const backupScheduleToggleSchema = z.object({
 const backupRunSchema = z.object({
   destinationPath: z.string().min(3).max(300).optional(),
 });
+
+router.get('/tags', (_req, res) => res.json({ tags: getTags() }));
 
 router.get('/words', (_req, res) => {
   res.json({ words: getAllWords() });

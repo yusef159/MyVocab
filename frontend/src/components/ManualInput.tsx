@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
+import TagPicker from './TagPicker';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
 import { wordExists } from '../db';
 import { useSearchParams } from 'react-router-dom';
@@ -18,6 +19,7 @@ const getStoredInputMode = (): InputMode => {
 export default function ManualInput() {
   const [searchParams] = useSearchParams();
   const [word, setWord] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [inputMode, setInputMode] = useState<InputMode>(getStoredInputMode);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -127,8 +129,9 @@ export default function ManualInput() {
     topic?: string,
     englishMeaning?: string
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentences, topic, englishMeaning);
+    const result = await saveWord(english, arabicMeanings, exampleSentences, topic, englishMeaning, selectedTags);
     if (result.success) {
+      setSelectedTags([]);
       setSuccessMessage('Word saved successfully!');
       clearSuggestions();
       setWord('');
@@ -176,8 +179,9 @@ export default function ManualInput() {
 
     const sentences = manualSentences.map(s => s.trim()).filter(Boolean).slice(0, MAX_EXAMPLE_SENTENCES);
     const englishMeaning = manualEnglishMeaning.trim() || undefined;
-    const result = await saveWord(word.trim(), meanings, sentences.length > 0 ? sentences : [''], undefined, englishMeaning);
+    const result = await saveWord(word.trim(), meanings, sentences.length > 0 ? sentences : [''], undefined, englishMeaning, selectedTags);
     if (result.success) {
+      setSelectedTags([]);
       setSuccessMessage('Word saved successfully!');
       setWord('');
       setManualMeaning('');
@@ -272,6 +276,8 @@ export default function ManualInput() {
             </div>
           </div>
 
+          <TagPicker value={selectedTags} onChange={setSelectedTags} />
+
           {/* Manual Input Fields */}
           {inputMode === 'manual' && (
             <>
@@ -312,7 +318,7 @@ export default function ManualInput() {
               {/* English Meaning (optional) */}
               <div className="mb-6">
                 <label className="block text-gray-400 text-sm uppercase tracking-wide mb-3">
-                  English Meaning <span className="text-gray-500 normal-case">• Optional — short explanation in English</span>
+                  English Meaning <span className="text-gray-500 normal-case">• Optional</span>
                 </label>
                 <textarea
                   value={manualEnglishMeaning}
@@ -476,6 +482,7 @@ export default function ManualInput() {
             </button>
           </div>
 
+          <TagPicker value={selectedTags} onChange={setSelectedTags} />
           <WordSelector
             suggestion={suggestions[0]}
             onSave={handleSave}

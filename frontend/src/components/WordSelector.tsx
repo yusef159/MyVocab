@@ -181,7 +181,7 @@ export default function WordSelector({
       {/* English Meaning (optional) */}
       <div className="mb-6">
         <p className="text-gray-400 text-sm uppercase tracking-wide mb-3">
-          English Meaning <span className="text-gray-500 normal-case">• Optional — short explanation in English</span>
+          English Meaning <span className="text-gray-500 normal-case">• Optional</span>
         </p>
         <textarea
           value={englishMeaning}

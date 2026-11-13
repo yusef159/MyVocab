@@ -74,6 +74,7 @@ export async function addWord(word: Omit<Word, 'id' | 'createdAt' | 'wrongCount'
     exampleSentences: word.exampleSentences,
     englishMeaning: word.englishMeaning,
     topic: word.topic,
+    tags: word.tags,
   });
   return res.data;
 }
@@ -121,7 +122,7 @@ export async function getWordReviewHistory(wordId: string): Promise<WordReviewEv
 
 export async function updateWordContent(
   id: string,
-  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null }
+  updates: { arabicMeanings?: string[]; exampleSentences?: string[]; englishMeaning?: string | null; tags?: string[] }
 ): Promise<void> {
   await axios.patch(`${API_URL}/api/data/words/${id}/content`, updates);
 }
@@ -349,6 +350,7 @@ export async function resetGrammarProgressForSkill(skillId: string): Promise<voi
 export interface BackupPayloadV1 {
   schemaVersion: 1;
   exportedAt: string;
+  tags?: { name: string; lastUsedAt: string }[];
   words: Word[];
   wordReviewEvents: WordReviewEvent[];
   streakData: StreakData[];

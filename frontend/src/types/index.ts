@@ -11,6 +11,7 @@ export interface Word {
   exampleSentences: string[];
   /** Optional concise English explanation of the word */
   englishMeaning?: string;
+  tags?: string[];
   topic?: string;
   status: WordStatus;
   wrongCount: number;

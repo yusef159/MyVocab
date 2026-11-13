@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useVocabStore } from '../stores/vocabStore';
 import WordSelector from './WordSelector';
+import TagPicker from './TagPicker';
 
 const WORD_LEVELS: readonly { value: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'; label: string }[] = [
   { value: 'A1', label: 'A1' },
@@ -29,6 +30,7 @@ function formatRunDate(value?: string): string {
 }
 
 export default function WordGenerator() {
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [count, setCount] = useState(5);
   const [topic, setTopic] = useState('');
   const [level, setLevel] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'>('B2');
@@ -63,6 +65,7 @@ export default function WordGenerator() {
   } = useVocabStore();
 
   const handleGenerate = () => {
+    setSelectedTags([]);
     setCurrentIndex(0);
     generateWords(count, topic || undefined, level);
   };
@@ -103,7 +106,7 @@ export default function WordGenerator() {
     wordTopic?: string,
     englishMeaning?: string
   ) => {
-    const result = await saveWord(english, arabicMeanings, exampleSentences, wordTopic, englishMeaning);
+    const result = await saveWord(english, arabicMeanings, exampleSentences, wordTopic, englishMeaning, selectedTags);
     if (result.success) {
       setSaveMessage('Word saved successfully!');
       moveToNext();
@@ -112,6 +115,7 @@ export default function WordGenerator() {
   };
 
   const moveToNext = () => {
+    setSelectedTags([]);
     if (currentIndex < suggestions.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
@@ -474,6 +478,7 @@ export default function WordGenerator() {
           </div>
 
           {/* Word Selector */}
+          <TagPicker value={selectedTags} onChange={setSelectedTags} />
           <WordSelector
             suggestion={suggestions[currentIndex]}
             topic={topic || undefined}

@@ -71,7 +71,7 @@ test('UTC day rollover and goal preserve existing streak rules and backup shape'
  assert.equal(getStreakData().currentStreak, 3);
  recordReview(add(), 'known', randomUUID());
  assert.equal(getStreakData().currentStreak, 3);
- assert.deepEqual(Object.keys(exportFullBackup()).sort(), ['schemaVersion','exportedAt','words','wordReviewEvents','streakData','dailyReviewCounts','grammarProgress'].sort());
+ assert.deepEqual(Object.keys(exportFullBackup()).sort(), ['schemaVersion','exportedAt','words','tags','wordReviewEvents','streakData','dailyReviewCounts','grammarProgress'].sort());
 });
 
 test('opening on a new day shows zero progress before any review, then counts from one', () => {

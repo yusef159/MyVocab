@@ -141,6 +141,9 @@ function applyLocalReviewUpdate(
 
 interface VocabState {
   // Words
+  tags: { name: string; lastUsedAt: string }[];
+  loadTags: () => Promise<void>;
+  setWordTags: (id: string, tags: string[]) => Promise<void>;
   words: Word[];
   problemWords: Word[];
   isLoading: boolean;
@@ -217,7 +220,8 @@ interface VocabState {
     arabicMeanings: string[],
     exampleSentences: string[],
     topic?: string,
-    englishMeaning?: string
+    englishMeaning?: string,
+    tags?: string[]
   ) => Promise<{ success: boolean; isDuplicate: boolean }>;
   
   markAsKnown: (id: string, reviewId?: string) => Promise<boolean>;
@@ -267,6 +271,7 @@ interface VocabState {
 }
 
 export const useVocabStore = create<VocabState>((set, get) => ({
+  tags: [],
   words: [],
   problemWords: [],
   isLoading: false,
@@ -286,6 +291,14 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   streak: null,
   reviewCounts: [],
 
+  loadTags: async () => {
+    const response = await axios.get<{ tags: { name: string; lastUsedAt: string }[] }>('/api/data/tags');
+    set({ tags: response.data.tags });
+  },
+  setWordTags: async (id, tags) => {
+    await dbUpdateWordContent(id, { tags });
+    await Promise.all([get().loadWords(), get().loadTags().catch(() => {})]);
+  },
   loadWords: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -522,7 +535,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     }
   },
 
-  saveWord: async (english, arabicMeanings, exampleSentences, topic, englishMeaning) => {
+  saveWord: async (english, arabicMeanings, exampleSentences, topic, englishMeaning, tags) => {
     try {
       const trimmedMeaning = englishMeaning?.trim();
       const result = await addWord({
@@ -531,6 +544,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
         exampleSentences,
         topic,
         englishMeaning: trimmedMeaning || undefined,
+        tags,
       });
       
       if (result.isDuplicate) {
@@ -538,6 +552,7 @@ export const useVocabStore = create<VocabState>((set, get) => ({
         return { success: false, isDuplicate: true };
       }
       
+      await get().loadTags().catch(() => {});
       await updateStreak();
       await get().loadWords();
       await get().loadStats();
