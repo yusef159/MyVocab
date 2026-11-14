@@ -2,6 +2,7 @@ import { WORD_SORT_OPTIONS, WORD_SORT_STORAGE_KEY, normalizeWordSort, matchesWor
 import { useState, useEffect, useMemo, useRef } from 'react';
 import TagPicker from './TagPicker';
 import { useVocabStore } from '../stores/vocabStore';
+import { getMasteryLevel } from '../lib/wordMastery';
 import * as XLSX from 'xlsx';
 import type { Word, WordReviewEvent } from '../types';
 import { MAX_EXAMPLE_SENTENCES } from '../types';
@@ -16,6 +17,14 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
+
+const MASTERY_TEXT_COLORS = {
+  new: 'text-slate-300',
+  learning: 'text-sky-300',
+  familiar: 'text-violet-300',
+  strong: 'text-amber-300',
+  mastered: 'text-emerald-300',
+};
 
 // Highlight the target word in a sentence
 function highlightWord(sentence: string, word: string): React.ReactNode {
@@ -308,6 +317,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
   const effectiveWrong = isEditingCounts ? editWrongCount : word.wrongCount;
   const learningPercentage = calculateLearningPercentage(effectiveCorrect, effectiveWrong);
   const totalReviews = effectiveCorrect + effectiveWrong;
+  const masteryLevel = getMasteryLevel(word.interval);
   const suggestion = suggestions[0];
 
   const chartData = (() => {
@@ -845,6 +855,13 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
                   <p className={`mt-2 text-lg font-bold ${word.status === 'known' ? 'text-emerald-400' : word.status === 'problem' ? 'text-red-400' : 'text-blue-400'}`}>
                     {word.status.charAt(0).toUpperCase() + word.status.slice(1)}
                   </p>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide">Mastery Level</p>
+                  <p className={`mt-2 text-lg font-bold ${MASTERY_TEXT_COLORS[masteryLevel.id]}`}>
+                    {masteryLevel.label}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">Review interval: {masteryLevel.range}</p>
                 </div>
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Date Added</p>
