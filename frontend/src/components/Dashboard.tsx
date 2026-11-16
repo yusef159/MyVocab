@@ -199,74 +199,92 @@ export default function Dashboard() {
 
       <QuickQuizzes />
 
-      {/* Streak Section — fills with daily review progress toward the streak goal */}
-      <div className="relative overflow-hidden rounded-2xl border border-orange-500/40 bg-gray-800/80 text-white">
-        <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-orange-500 to-amber-500 transition-[width] duration-500 ease-out"
-          style={{ width: `${dailyProgressPercent}%` }}
-          aria-hidden
-        />
-        <div className="relative z-10 p-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-wide text-white/80">Current Streak</p>
-              <p className="text-4xl sm:text-5xl font-bold mt-1 drop-shadow-sm">
-                {streak?.currentStreak || 0}
-                <span className="text-2xl ml-2">days</span>
-              </p>
-            </div>
-            <div className="sm:text-right">
-              <p className="text-sm uppercase tracking-wide text-white/80">Longest Streak</p>
-              <p className="text-2xl sm:text-3xl font-bold mt-1 drop-shadow-sm">
-                {streak?.longestStreak || 0}
-                <span className="text-lg ml-2">days</span>
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-white/85">
-            <p>
-              Today: {Math.min(reviewsToday, dailyGoal)}/{dailyGoal} reviews
-              {dailyProgress >= 1 ? ' — daily goal reached' : ''}
+      {/* Compact streak summary with daily review progress */}
+      <section
+        aria-label="Learning streak"
+        className="rounded-2xl border border-gray-700/80 bg-gray-800/80 p-4 text-white sm:px-5"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2c.4 2.2-.3 3.8-1.5 5.2C9.2 8.6 8 10.2 8 12.2c0 2.4 1.7 4.3 4 4.3s4-1.9 4-4.3c0-1.3-.4-2.4-1-3.4.9 1.1 1.5 2.4 1.5 4 0 3.3-2.5 5.8-5.5 5.8S5.5 15.8 5.5 12.5C5.5 8.8 8.2 6.2 12 2z" />
+              </svg>
+            </span>
+            <p className="text-base font-semibold tracking-tight sm:text-lg">
+              <span className="tabular-nums">{streak?.currentStreak || 0}</span>-day streak
             </p>
-            {streak?.lastActivityDate && (
-              <p>
-                Last activity:{' '}
-                {new Date(streak.lastActivityDate).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                })}
+          </div>
+          <p className="shrink-0 text-xs text-gray-400 sm:text-sm">
+            Best: <span className="font-medium tabular-nums text-gray-300">{streak?.longestStreak || 0}</span> days
+          </p>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
+          <div aria-live="polite" className="min-w-0">
+            {dailyProgress >= 1 ? (
+              <p className="flex items-center gap-1.5 text-orange-400">
+                <span className="rounded-full motion-safe:animate-[streakGoalPulse_1s_ease-out]">
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                Daily goal reached
               </p>
+            ) : (
+              <p className="text-gray-400">Today's reviews</p>
             )}
           </div>
+          <p className="shrink-0 tabular-nums text-gray-400">
+            <span className={dailyProgress >= 1 ? 'text-orange-400' : 'text-sky-400'}>
+              {Math.min(reviewsToday, dailyGoal)}
+            </span>
+            <span className="mx-0.5 text-gray-500">/</span>{dailyGoal}
+          </p>
         </div>
-      </div>
+        <div
+          role="progressbar"
+          aria-label="Daily review goal"
+          aria-valuemin={0}
+          aria-valuemax={dailyGoal}
+          aria-valuenow={Math.min(reviewsToday, dailyGoal)}
+          aria-valuetext={`${Math.min(reviewsToday, dailyGoal)} of ${dailyGoal} reviews${dailyProgress >= 1 ? ', daily goal reached' : ''}`}
+          className="mt-2.5 h-1 overflow-hidden rounded-full bg-gray-700/70"
+        >
+          <div
+            className={`h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none ${
+              dailyProgress >= 1 ? 'bg-orange-400' : 'bg-sky-400'
+            }`}
+            style={{ width: `${dailyProgressPercent}%` }}
+          />
+        </div>
+      </section>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
-          <p className="text-gray-400 text-sm uppercase tracking-wide">Total Words</p>
-          <p className="text-3xl sm:text-4xl font-bold text-white mt-2">{stats.total}</p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+        <div className="min-w-0 bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
+          <p className="text-gray-400 text-xs sm:text-sm uppercase tracking-wide">Total Words</p>
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums text-white mt-2">{stats.total}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-emerald-500/30">
-          <p className="text-emerald-400 text-sm uppercase tracking-wide">Known</p>
-          <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">{stats.known}</p>
+        <div className="min-w-0 bg-gray-800 rounded-xl p-4 sm:p-6 border border-emerald-500/30">
+          <p className="text-emerald-400 text-xs sm:text-sm uppercase tracking-wide">Known</p>
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums text-emerald-400 mt-2">{stats.known}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-red-500/30">
-          <p className="text-red-400 text-sm uppercase tracking-wide">Problem</p>
-          <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">{stats.problem}</p>
+        <div className="min-w-0 bg-gray-800 rounded-xl p-4 sm:p-6 border border-red-500/30">
+          <p className="text-red-400 text-xs sm:text-sm uppercase tracking-wide">Problem</p>
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums text-red-400 mt-2">{stats.problem}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-blue-500/30">
-          <p className="text-blue-400 text-sm uppercase tracking-wide">New</p>
-          <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">{stats.new}</p>
+        <div className="min-w-0 bg-gray-800 rounded-xl p-4 sm:p-6 border border-blue-500/30">
+          <p className="text-blue-400 text-xs sm:text-sm uppercase tracking-wide">New</p>
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums text-blue-400 mt-2">{stats.new}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-amber-500/30">
-          <p className="text-amber-400 text-sm uppercase tracking-wide">In Risk</p>
-          <p className="text-3xl sm:text-4xl font-bold text-amber-400 mt-2">{riskCount}</p>
+        <div className="min-w-0 bg-gray-800 rounded-xl p-4 sm:p-6 border border-amber-500/30">
+          <p className="text-amber-400 text-xs sm:text-sm uppercase tracking-wide">In Risk</p>
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums text-amber-400 mt-2">{riskCount}</p>
         </div>
 
       </div>
@@ -321,13 +339,18 @@ export default function Dashboard() {
 
       <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 transition-opacity duration-300">
         <h3 className="text-lg font-semibold text-white mb-4">Words reviewed</h3>
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div
+          role="group"
+          aria-label="Review date range"
+          className="mb-4 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {REVIEW_RANGE_OPTIONS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
+              aria-pressed={reviewRange === key}
               onClick={() => setReviewRange(key)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 reviewRange === key
                   ? 'bg-emerald-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'

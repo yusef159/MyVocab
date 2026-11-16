@@ -31,6 +31,11 @@ body {
 }
 
 /* Daily streak toast during flashcard sessions */
+@keyframes streakGoalPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(251, 146, 60, 0); }
+}
+
 @keyframes streakToast {
   0% {
     opacity: 0;
