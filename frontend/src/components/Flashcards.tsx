@@ -183,9 +183,8 @@ export default function Flashcards() {
   const touchEndXRef = useRef(0);
   const touchEndYRef = useRef(0);
   const swipeHandledRef = useRef(false);
-  const swipeTimeoutRef = useRef<number | null>(null);
   const [swipeOffsetX, setSwipeOffsetX] = useState(0);
-  const [isSwipeSettling, setIsSwipeSettling] = useState(false);
+  const [isSwipePending, setIsSwipePending] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [isExplainingEnglish, setIsExplainingEnglish] = useState(false);
   const [selectedExplainIndex, setSelectedExplainIndex] = useState<number | null>(null);
@@ -449,11 +448,12 @@ export default function Flashcards() {
   }, [words, sessionStarted]);
 
   const handleFlip = () => {
+    if (isSavingReview) return;
     setIsFlipped(!isFlipped);
   };
 
   const handleCardTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isSwipeSettling) return;
+    if (isSavingReview) return;
     const touch = e.touches[0];
     if (!touch) return;
     touchStartXRef.current = touch.clientX;
@@ -461,11 +461,10 @@ export default function Flashcards() {
     touchEndXRef.current = touch.clientX;
     touchEndYRef.current = touch.clientY;
     swipeHandledRef.current = false;
-    setIsSwipeSettling(false);
   };
 
   const handleCardTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isSwipeSettling) return;
+    if (isSavingReview) return;
     const touch = e.touches[0];
     if (!touch) return;
     touchEndXRef.current = touch.clientX;
@@ -542,13 +541,19 @@ export default function Flashcards() {
       setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
     } finally {
       setIsSavingReview(false);
+      setIsSwipePending(false);
     }
   };
   const handleKnow = () => submitReview('known');
   const handleDontKnow = () => submitReview('problem');
 
-  const handleCardTouchEnd = () => {
-    if (isSwipeSettling) return;
+  const handleCardTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isSavingReview) return;
+    const touch = e.changedTouches[0];
+    if (touch) {
+      touchEndXRef.current = touch.clientX;
+      touchEndYRef.current = touch.clientY;
+    }
     const deltaX = touchEndXRef.current - touchStartXRef.current;
     const deltaY = touchEndYRef.current - touchStartYRef.current;
     const absX = Math.abs(deltaX);
@@ -563,24 +568,14 @@ export default function Flashcards() {
     }
 
     swipeHandledRef.current = true;
-    setIsSwipeSettling(true);
-    setSwipeOffsetX(deltaX > 0 ? 220 : -220);
-    if (swipeTimeoutRef.current !== null) {
-      window.clearTimeout(swipeTimeoutRef.current);
-    }
-    swipeTimeoutRef.current = window.setTimeout(() => {
-      setSwipeOffsetX(0);
-      setIsSwipeSettling(false);
-      if (deltaX > 0) {
-        void handleKnow();
-        return;
-      }
-      void handleDontKnow();
-    }, 170);
+    if (e.cancelable) e.preventDefault();
+    setSwipeOffsetX(0);
+    setIsSwipePending(true);
+    void submitReview(deltaX > 0 ? 'known' : 'problem');
   };
 
   const handleCardClick = () => {
-    if (isSwipeSettling) return;
+    if (isSavingReview) return;
     if (swipeHandledRef.current) {
       swipeHandledRef.current = false;
       return;
@@ -590,8 +585,6 @@ export default function Flashcards() {
 
   useEffect(() => {
     setSwipeOffsetX(0);
-    setIsSwipeSettling(false);
-    swipeHandledRef.current = false;
     setIsExplainingEnglish(false);
     setSelectedExplainIndex(null);
     clearEnglishExplanation();
@@ -637,20 +630,16 @@ export default function Flashcards() {
     clearEnglishExplanation();
   };
 
-  useEffect(() => {
-    return () => {
-      if (swipeTimeoutRef.current !== null) {
-        window.clearTimeout(swipeTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const swipeStrength = Math.min(1, Math.abs(swipeOffsetX) / 120);
   const swipeTilt = Math.max(-9, Math.min(9, swipeOffsetX * 0.05));
   const dontKnowOpacity = swipeOffsetX < 0 ? swipeStrength : 0;
   const knowOpacity = swipeOffsetX > 0 ? swipeStrength : 0;
   const swipeTransform = `translateX(${swipeOffsetX}px) rotate(${swipeTilt}deg)`;
-  const swipeTransition = isSwipeSettling ? 'transform 180ms ease-out' : 'none';
+  // Preview the next front immediately; commit progress only after the review saves.
+  // A failed save restores the answered card so its review can be retried safely.
+  const displayedIndex = currentIndex + (isSwipePending ? 1 : 0);
+  const displayedWord = shuffledWords[displayedIndex];
+  const displayedFlipped = isFlipped && !isSwipePending;
 
   // Keyboard shortcuts during session (always active)
   useEffect(() => {
@@ -1694,16 +1683,16 @@ export default function Flashcards() {
       {/* Progress */}
       <div className="flex items-center justify-between text-gray-400 mb-2">
         <span>
-          Card {currentIndex + 1} of {shuffledWords.length}
+          Card {Math.min(displayedIndex + 1, shuffledWords.length)} of {shuffledWords.length}
         </span>
         <span className="text-sm">
-          {currentWord?.status === 'known' && (
+          {displayedWord?.status === 'known' && (
             <span className="text-emerald-400">Known</span>
           )}
-          {currentWord?.status === 'problem' && (
+          {displayedWord?.status === 'problem' && (
             <span className="text-red-400">Problem</span>
           )}
-          {currentWord?.status === 'new' && (
+          {displayedWord?.status === 'new' && (
             <span className="text-blue-400">New</span>
           )}
         </span>
@@ -1713,7 +1702,7 @@ export default function Flashcards() {
       <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
         <div
           className="h-full bg-emerald-500 transition-all duration-300"
-          style={{ width: `${((currentIndex + 1) / shuffledWords.length) * 100}%` }}
+          style={{ width: `${(Math.min(displayedIndex + 1, shuffledWords.length) / shuffledWords.length) * 100}%` }}
         />
       </div>
 
@@ -1723,6 +1712,8 @@ export default function Flashcards() {
         onTouchStart={handleCardTouchStart}
         onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
+        onTouchCancel={() => setSwipeOffsetX(0)}
+        aria-busy={isSavingReview}
         className="relative h-[22rem] sm:h-80 cursor-pointer perspective-1000"
         style={{ touchAction: 'pan-y' }}
       >
@@ -1746,15 +1737,15 @@ export default function Flashcards() {
         >
           I know
         </div>
-        <div className="absolute inset-0" style={{ transform: swipeTransform, transition: swipeTransition }}>
+        <div className="absolute inset-0" style={{ transform: swipeTransform, transition: 'none' }}>
           <div
-            key={currentIndex}
+            key={displayedIndex}
             className={`absolute inset-0 transition-transform duration-500 transform-style-preserve-3d ${
-              isFlipped ? 'rotate-y-180' : ''
+              displayedFlipped ? 'rotate-y-180' : ''
             }`}
             style={{
               transformStyle: 'preserve-3d',
-              transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              transform: displayedFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
             }}
           >
           {/* Front */}
@@ -1762,12 +1753,13 @@ export default function Flashcards() {
             className="absolute inset-0 h-full w-full bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 overflow-hidden backface-hidden"
             style={{
               backfaceVisibility: 'hidden',
-              pointerEvents: isFlipped ? 'none' : 'auto',
+              pointerEvents: displayedFlipped ? 'none' : 'auto',
             }}
           >
             <div className="relative flex h-full w-full flex-col">
               <button
                 type="button"
+                disabled={isSavingReview}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleSpeakWord();
@@ -1783,9 +1775,9 @@ export default function Flashcards() {
               <div className="flex flex-1 items-center justify-center p-5 sm:p-6">
                 <div className="text-center">
                   <p className="text-3xl sm:text-4xl font-bold text-white break-words mb-4">
-                    {currentWord?.english}
+                    {displayedWord?.english ?? 'Saving review...'}
                   </p>
-                  <p className="text-gray-500 text-sm">Click to reveal</p>
+                  <p className="text-gray-500 text-sm">{displayedWord ? 'Click to reveal' : 'Finishing session...'}</p>
                 </div>
               </div>
             </div>
@@ -1797,7 +1789,7 @@ export default function Flashcards() {
             style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
-              pointerEvents: isFlipped ? 'auto' : 'none',
+              pointerEvents: displayedFlipped ? 'auto' : 'none',
             }}
           >
             <div className="relative flex h-full w-full flex-col">
@@ -1809,9 +1801,9 @@ export default function Flashcards() {
                   setIsSentenceAutoSpeak((prev) => {
                     const next = !prev;
                     if (next) {
-                      const firstSentence = currentWord?.exampleSentences?.filter(Boolean)[0];
+                      const firstSentence = displayedWord?.exampleSentences?.filter(Boolean)[0];
                       if (firstSentence) {
-                        lastSpokenSentenceRef.current = `${currentWord?.id}-${currentIndex}`;
+                        lastSpokenSentenceRef.current = `${displayedWord?.id}-${displayedIndex}`;
                         speakText(firstSentence);
                       }
                     } else {
@@ -1833,7 +1825,7 @@ export default function Flashcards() {
               </button>
 
               {/* Explain with AI — bottom-left icon when no English meaning */}
-              {!currentWord?.englishMeaning?.trim() && !isExplainingEnglish && (
+              {!displayedWord?.englishMeaning?.trim() && !isExplainingEnglish && (
                 <button
                   type="button"
                   onClick={handleExplainWord}
@@ -1850,7 +1842,7 @@ export default function Flashcards() {
               <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:gap-5 w-full max-w-lg mx-auto p-5 sm:p-6 overflow-y-auto min-h-0">
               {/* 1. Arabic meanings — centered */}
               <div className="w-full text-center space-y-1.5">
-                {currentWord?.arabicMeanings.map((meaning, i) => (
+                {displayedWord?.arabicMeanings.map((meaning, i) => (
                   <p key={i} className="text-xl sm:text-2xl font-bold text-white leading-relaxed">
                     <span dir="rtl" className="inline-block">
                       {meaning}
@@ -1861,27 +1853,27 @@ export default function Flashcards() {
 
               {/* 2. Example sentences */}
               <div className="w-full text-center space-y-2">
-                {(currentWord?.exampleSentences ?? []).filter(Boolean).map((sent, i) => (
+                {(displayedWord?.exampleSentences ?? []).filter(Boolean).map((sent, i) => (
                   <p key={i} className="text-gray-300 text-base sm:text-lg italic leading-relaxed px-1">
-                    &quot;{currentWord?.english
-                      ? highlightWordInSentence(sent, currentWord.english)
+                    &quot;{displayedWord?.english
+                      ? highlightWordInSentence(sent, displayedWord.english)
                       : sent}&quot;
                   </p>
                 ))}
-                {(!currentWord?.exampleSentences || currentWord.exampleSentences.every(s => !s?.trim())) && (
+                {(!displayedWord?.exampleSentences || displayedWord.exampleSentences.every(s => !s?.trim())) && (
                   <p className="text-gray-500 italic">—</p>
                 )}
               </div>
 
               {/* 3. English meaning — shown when saved or while picking an AI explanation */}
-              {(currentWord?.englishMeaning?.trim() || isExplainingEnglish) && (
+              {(displayedWord?.englishMeaning?.trim() || isExplainingEnglish) && (
               <div
                 className="w-full pt-4 border-t border-emerald-500/25"
                 onClick={(e) => e.stopPropagation()}
               >
-                {currentWord?.englishMeaning?.trim() ? (
+                {displayedWord?.englishMeaning?.trim() ? (
                   <p className="text-gray-200 text-sm sm:text-base leading-relaxed px-1 text-center">
-                    {currentWord.englishMeaning}
+                    {displayedWord.englishMeaning}
                   </p>
                 ) : (
                   <div className="w-full">
