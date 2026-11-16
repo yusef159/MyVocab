@@ -30,7 +30,20 @@ body {
   animation: wrongShake 0.5s ease-in-out;
 }
 
-/* Daily streak toast during flashcard sessions */
+/* Brief feedback after answering a flashcard with a swipe. */
+@keyframes flashcardAnswerFeedback {
+  0% { opacity: 0; }
+  18%, 65% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.flashcard-answer-feedback {
+  animation: flashcardAnswerFeedback 400ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flashcard-answer-feedback { animation: none; }
+}
+
+/* Daily streak feedback and toast during flashcard sessions. */
 @keyframes streakGoalPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.4); }
   50% { box-shadow: 0 0 0 12px rgba(251, 146, 60, 0); }

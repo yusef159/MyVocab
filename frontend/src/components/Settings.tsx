@@ -193,7 +193,6 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl sm:text-3xl font-bold text-white">Settings</h2>
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700">
         <button

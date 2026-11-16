@@ -408,7 +408,6 @@ export default function GrammarTab() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Grammar</h2>
           <p className="text-gray-400 text-sm mt-1">AI-powered lessons and practice for every level</p>
         </div>
         <div className="flex items-center gap-3 sm:gap-4">

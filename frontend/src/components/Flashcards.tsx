@@ -1,6 +1,7 @@
 import TagPicker from './TagPicker';
 import { filterWords, calculateLearningPercentage, type FilterType, type ProgressFilter } from '../lib/flashcardFilters';
 import { createReviewSubmission } from '../lib/reviewSubmission';
+import { createFlashcardSwipe } from '../lib/flashcardSwipe';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVocabStore } from '../stores/vocabStore';
@@ -178,13 +179,14 @@ export default function Flashcards() {
   const [isSentenceAutoSpeak, setIsSentenceAutoSpeak] = useState(false);
   const lastSpokenWordRef = useRef<string | null>(null);
   const lastSpokenSentenceRef = useRef<string | null>(null);
-  const touchStartXRef = useRef(0);
-  const touchStartYRef = useRef(0);
-  const touchEndXRef = useRef(0);
-  const touchEndYRef = useRef(0);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const swipeGestureRef = useRef(createFlashcardSwipe());
+  const swipeTouchIdRef = useRef<number | null>(null);
   const swipeHandledRef = useRef(false);
   const [swipeOffsetX, setSwipeOffsetX] = useState(0);
   const [isSwipePending, setIsSwipePending] = useState(false);
+  const [swipeFeedback, setSwipeFeedback] = useState<{ answer: 'known' | 'problem'; id: number } | null>(null);
+  const swipeFeedbackIdRef = useRef(0);
   const [showInstructions, setShowInstructions] = useState(false);
   const [isExplainingEnglish, setIsExplainingEnglish] = useState(false);
   const [selectedExplainIndex, setSelectedExplainIndex] = useState<number | null>(null);
@@ -453,26 +455,51 @@ export default function Flashcards() {
   };
 
   const handleCardTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isSavingReview) return;
+    swipeGestureRef.current.cancel();
+    swipeTouchIdRef.current = null;
+    setSwipeOffsetX(0);
+    if (isSavingReview || e.touches.length !== 1) return;
     const touch = e.touches[0];
     if (!touch) return;
-    touchStartXRef.current = touch.clientX;
-    touchStartYRef.current = touch.clientY;
-    touchEndXRef.current = touch.clientX;
-    touchEndYRef.current = touch.clientY;
+    swipeGestureRef.current.start(touch.clientX, touch.clientY);
+    swipeTouchIdRef.current = touch.identifier;
     swipeHandledRef.current = false;
   };
 
-  const handleCardTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isSavingReview) return;
-    const touch = e.touches[0];
-    if (!touch) return;
-    touchEndXRef.current = touch.clientX;
-    touchEndYRef.current = touch.clientY;
-    const deltaX = touch.clientX - touchStartXRef.current;
-    const clampedOffset = Math.max(-160, Math.min(160, deltaX));
-    setSwipeOffsetX(clampedOffset);
+  const handleCardTouchCancel = () => {
+    swipeGestureRef.current.cancel();
+    swipeTouchIdRef.current = null;
+    setSwipeOffsetX(0);
   };
+
+  // React's delegated touchmove listener is passive. Attach directly so a
+  // horizontal gesture can prevent page scrolling while vertical gestures scroll normally.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (isSavingReview || e.touches.length !== 1) {
+        handleCardTouchCancel();
+        return;
+      }
+      const touch = Array.from(e.touches).find(t => t.identifier === swipeTouchIdRef.current);
+      if (!touch) return;
+      const gesture = swipeGestureRef.current.move(touch.clientX, touch.clientY);
+      if (gesture.axis === 'horizontal') {
+        if (e.cancelable) e.preventDefault();
+        swipeHandledRef.current = true;
+      }
+      setSwipeOffsetX(gesture.offset);
+    };
+    card.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => card.removeEventListener('touchmove', onTouchMove);
+  });
+
+  useEffect(() => {
+    if (!swipeFeedback) return;
+    const timer = window.setTimeout(() => setSwipeFeedback(null), 400);
+    return () => window.clearTimeout(timer);
+  }, [swipeFeedback]);
 
   const moveToNext = useCallback(
     (counts?: { knownCount: number; problemCount: number }) => {
@@ -536,8 +563,12 @@ export default function Flashcards() {
           setSessionProblemCount(problemCount);
           moveToNext({ knownCount, problemCount });
         });
-      if (!saved) setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
+      if (!saved) {
+        setSwipeFeedback(null);
+        setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
+      }
     } catch {
+      setSwipeFeedback(null);
       setReviewSaveError('Review could not be confirmed. Retry your answer to continue.');
     } finally {
       setIsSavingReview(false);
@@ -549,29 +580,18 @@ export default function Flashcards() {
 
   const handleCardTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     if (isSavingReview) return;
-    const touch = e.changedTouches[0];
-    if (touch) {
-      touchEndXRef.current = touch.clientX;
-      touchEndYRef.current = touch.clientY;
-    }
-    const deltaX = touchEndXRef.current - touchStartXRef.current;
-    const deltaY = touchEndYRef.current - touchStartYRef.current;
-    const absX = Math.abs(deltaX);
-    const absY = Math.abs(deltaY);
-    const swipeThreshold = 70;
-    const maxVerticalDrift = 80;
-
-    if (absX < swipeThreshold || absY > maxVerticalDrift || absX <= absY) {
-      // Not a committed swipe: keep tap-to-flip behavior working on touch devices.
-      setSwipeOffsetX(0);
-      return;
-    }
+    const touch = Array.from(e.changedTouches).find(t => t.identifier === swipeTouchIdRef.current);
+    if (!touch) return;
+    const answer = swipeGestureRef.current.finish(touch.clientX, touch.clientY);
+    swipeTouchIdRef.current = null;
+    setSwipeOffsetX(0);
+    if (!answer) return;
 
     swipeHandledRef.current = true;
     if (e.cancelable) e.preventDefault();
-    setSwipeOffsetX(0);
+    setSwipeFeedback({ answer, id: ++swipeFeedbackIdRef.current });
     setIsSwipePending(true);
-    void submitReview(deltaX > 0 ? 'known' : 'problem');
+    void submitReview(answer);
   };
 
   const handleCardClick = () => {
@@ -895,7 +915,6 @@ export default function Flashcards() {
   if (words.length === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
         <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <p className="text-gray-400 text-lg">No words to review!</p>
           <p className="text-gray-500 mt-2">
@@ -921,7 +940,6 @@ export default function Flashcards() {
   if (!sessionStarted) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
         
         <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
           <h3 className="text-xl font-semibold text-white mb-4">Choose Your Session</h3>
@@ -1480,7 +1498,6 @@ export default function Flashcards() {
 
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
         <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <div className="text-6xl mb-4">🎉</div>
           <p className="text-2xl font-bold text-white mb-2">Session Complete!</p>
@@ -1598,8 +1615,7 @@ export default function Flashcards() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">Flashcards</h2>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex items-center gap-2">
           {/* Word auto-speak: Mute/Unmute */}
           <button
@@ -1708,15 +1724,31 @@ export default function Flashcards() {
 
       {/* Flashcard: key so next word appears immediately (no flip animation on advance); flip animation only when revealing this card */}
       <div
+        ref={cardRef}
         onClick={handleCardClick}
         onTouchStart={handleCardTouchStart}
-        onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
-        onTouchCancel={() => setSwipeOffsetX(0)}
+        onTouchCancel={handleCardTouchCancel}
         aria-busy={isSavingReview}
         className="relative h-[22rem] sm:h-80 cursor-pointer perspective-1000"
-        style={{ touchAction: 'pan-y' }}
+        style={{ touchAction: 'pan-y pinch-zoom' }}
       >
+        {swipeFeedback && (
+          <div
+            key={swipeFeedback.id}
+            role="status"
+            className="flashcard-answer-feedback pointer-events-none absolute inset-x-0 top-5 z-20 flex justify-center"
+          >
+            <span className={`flex items-center gap-1.5 rounded-full border bg-gray-900 px-3 py-1.5 text-xs font-medium ${
+              swipeFeedback.answer === 'known' ? 'border-emerald-400/40 text-emerald-400' : 'border-red-400/40 text-red-400'
+            }`}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d={swipeFeedback.answer === 'known' ? 'm5 12 4 4L19 6' : 'm6 6 12 12M6 18 18 6'} />
+              </svg>
+              {swipeFeedback.answer === 'known' ? 'I know' : "I don't know"}
+            </span>
+          </div>
+        )}
         <div
           className="absolute left-5 top-5 z-10 pointer-events-none rounded-full border border-red-400/60 bg-red-500/20 px-3 py-1 text-red-200 text-sm font-semibold"
           style={{

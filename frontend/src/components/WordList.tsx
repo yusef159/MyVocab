@@ -1220,15 +1220,12 @@ export default function WordList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-2xl sm:text-3xl font-bold text-white">My Words</h2>
-          {autoSchedule?.active && (
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs sm:text-sm font-medium text-emerald-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Auto Generate ON
-            </span>
-          )}
-        </div>
+        {autoSchedule?.active && (
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs sm:text-sm font-medium text-emerald-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            Auto Generate ON
+          </span>
+        )}
 
         <input
           type="file"

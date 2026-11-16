@@ -205,7 +205,6 @@ export default function ManualInput() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl sm:text-3xl font-bold text-white">Manual Word Input</h2>
 
       {error && (
         <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2">

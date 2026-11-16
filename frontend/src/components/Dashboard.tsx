@@ -195,7 +195,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h2>
 
       <QuickQuizzes />
 

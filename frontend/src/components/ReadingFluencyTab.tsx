@@ -228,7 +228,6 @@ export default function ReadingFluencyTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white">Reading Fluency</h2>
           <p className="text-gray-400 mt-1">
             Generate an article from your known words, read it aloud, and get fluency feedback.
           </p>

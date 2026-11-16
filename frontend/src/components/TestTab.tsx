@@ -122,7 +122,6 @@ export default function TestTab() {
   if (knownWords.length === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">Test</h2>
         <div className="bg-gray-800 rounded-xl p-5 sm:p-8 border border-gray-700 text-center">
           <p className="text-gray-400 text-lg">No known words to test!</p>
           <p className="text-gray-500 mt-2">
@@ -149,7 +148,6 @@ export default function TestTab() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl sm:text-3xl font-bold text-white">Test</h2>
       
       <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
         <h3 className="text-xl font-semibold text-white mb-4">Select Known Words</h3>

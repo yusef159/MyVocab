@@ -156,7 +156,6 @@ export default function WordGenerator() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl sm:text-3xl font-bold text-white">Generate Words</h2>
 
       <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
