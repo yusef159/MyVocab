@@ -3,6 +3,16 @@ import type { Word } from '../types';
 export type FilterType = 'all' | 'new' | 'problem' | 'risk' | 'date';
 export type ProgressFilter = 'all' | 'moderate' | 'hard' | 'very hard';
 
+export function getAllProblemWords(words: Word[]): Word[] {
+  return words.filter(word => word.status === 'problem');
+}
+
+// Use current statuses: a correct answer may still leave a word in Problem.
+export function getRemainingSessionProblems(sessionWords: Word[], words: Word[]): Word[] {
+  const sessionIds = new Set(sessionWords.map(word => word.id));
+  return words.filter(word => sessionIds.has(word.id) && word.status === 'problem');
+}
+
 // Calculate learning progress percentage
 export function calculateLearningPercentage(correctCount: number, wrongCount: number): number {
   const total = correctCount + wrongCount;
@@ -48,7 +58,7 @@ export function filterWords(
       return words.filter(w => w.status === 'new');
     case 'problem': {
       // Only show words with status "problem" (not known)
-      let problemWords = words.filter(w => w.status === 'problem');
+      let problemWords = getAllProblemWords(words);
       
       // Apply learning progress filter if specified
       if (progressFilter) {

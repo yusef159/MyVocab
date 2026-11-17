@@ -1,5 +1,5 @@
 import TagPicker from './TagPicker';
-import { filterWords, calculateLearningPercentage, type FilterType, type ProgressFilter } from '../lib/flashcardFilters';
+import { filterWords, calculateLearningPercentage, getAllProblemWords, getRemainingSessionProblems, type FilterType, type ProgressFilter } from '../lib/flashcardFilters';
 import { createReviewSubmission } from '../lib/reviewSubmission';
 import { createFlashcardSwipe } from '../lib/flashcardSwipe';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -766,6 +766,54 @@ export default function Flashcards() {
     });
   };
 
+  const remainingSessionProblems = useMemo(
+    () => getRemainingSessionProblems(shuffledWords, words), [shuffledWords, words]
+  );
+  const remainingLastSessionProblems = useMemo(
+    () => getRemainingSessionProblems(lastCompletedSession?.words ?? [], words), [lastCompletedSession, words]
+  );
+
+  const allProblemWords = useMemo(() => getAllProblemWords(words), [words]);
+
+  const completeProblemWords = () => {
+    const remaining = getAllProblemWords(useVocabStore.getState().words);
+    if (remaining.length === 0) return;
+    const shuffled = shuffleArray(remaining);
+    lastSpokenWordRef.current = null;
+    lastSpokenSentenceRef.current = null;
+    swipeGestureRef.current.cancel();
+    swipeTouchIdRef.current = null;
+    swipeHandledRef.current = false;
+    setSwipeOffsetX(0);
+    setSwipeFeedback(null);
+    setIsSwipePending(false);
+    setReviewSaveError(null);
+    setShuffledWords(shuffled);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setIsExplainingEnglish(false);
+    setSelectedExplainIndex(null);
+    clearEnglishExplanation();
+    setSessionComplete(false);
+    setSessionKnownCount(0);
+    setSessionProblemCount(0);
+    setTestSessionWords(null);
+    setIsRiskReminderSession(false);
+    setFilterType('problem');
+    setSelectedTag('');
+    setProblemProgressFilter('all');
+    setSessionStarted(true);
+    persistActiveSession({
+      wordIds: shuffled.map(word => word.id),
+      currentIndex: 0,
+      filterType: 'problem',
+      dateRange,
+      savedAt: new Date().toISOString(),
+      knownCount: 0,
+      problemCount: 0,
+    });
+  };
+
   const getDateRangeCount = () => filterCounts.date.find(d => d.days === dateRange)?.count ?? 0;
 
   const getSelectedFilterCount = () => eligibleWords.length;
@@ -997,7 +1045,7 @@ export default function Flashcards() {
                   // Some of the words from this session might still be "problem"
                   // words in your overall vocabulary (problem words need several
                   // successful reviews before they are promoted to "known").
-                  const currentProblemWords = lastCompletedSession.words.filter(word => word.status === 'problem').length;
+                  const currentProblemWords = remainingLastSessionProblems.length;
                   const currentProblemPct =
                     total > 0 ? Math.round((currentProblemWords / total) * 100) : 0;
                   return (
@@ -1043,6 +1091,14 @@ export default function Flashcards() {
                 >
                   Regenerate This Session
                 </button>
+                {allProblemWords.length > 0 && <button
+                  type="button"
+                  onClick={completeProblemWords}
+                  title="Practice all problem words in your vocabulary"
+                  className="px-4 py-2 bg-amber-500 text-gray-950 rounded-lg font-semibold hover:bg-amber-400 transition-colors"
+                >
+                  Complete Problem ({allProblemWords.length})
+                </button>}
                 {(() => {
                   const total = lastCompletedSession.totalWords;
                   const knownPct = total > 0 ? Math.round((lastCompletedSession.knownCount / total) * 100) : 0;
@@ -1510,11 +1566,7 @@ export default function Flashcards() {
             // Some words might still be "problem" in your overall vocabulary even
             // if this session was answered 100% correctly (problem words need a
             // streak of correct answers before they become "known").
-            const wordMap = new Map(words.map(w => [w.id, w]));
-            const problemWordsStillTracked = shuffledWords.filter(word => {
-              const latest = wordMap.get(word.id) ?? word;
-              return latest.status === 'problem';
-            }).length;
+            const problemWordsStillTracked = remainingSessionProblems.length;
             const problemWordsStillTrackedPct =
               total > 0 ? Math.round((problemWordsStillTracked / total) * 100) : 0;
 
@@ -1562,7 +1614,7 @@ export default function Flashcards() {
             );
           })()}
 
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 justify-center">
               {(() => {
                 const allWordsKnown = shuffledWords.every(word => word.status === 'known');
                 const isUnlocked = knownPct === 100 && allWordsKnown;
@@ -1593,6 +1645,14 @@ export default function Flashcards() {
             >
               Try Again
             </button>
+            {allProblemWords.length > 0 && <button
+              type="button"
+              onClick={completeProblemWords}
+              title="Practice all problem words in your vocabulary"
+              className="px-6 py-3 bg-amber-500 text-gray-950 rounded-lg font-semibold hover:bg-amber-400 transition-colors"
+            >
+              Complete Problem ({allProblemWords.length})
+            </button>}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Word } from '../types';
 import { getMasteryLevel, summarizeWordMastery, type MasteryLevel } from '../lib/wordMastery';
 
@@ -10,11 +10,26 @@ const COLORS = {
   mastered: { bar: 'bg-emerald-400', text: 'text-emerald-300', selected: 'border-emerald-400 bg-emerald-400/10' },
 };
 const PAGE_SIZE = 8;
+const WORDS_EXPANDED_KEY = 'myvocab.dashboard.masteryWordsExpanded';
 
 export default function WordMastery({ words }: { words: Word[] }) {
   const [selected, setSelected] = useState<MasteryLevel['id'] | 'all'>('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [wordsExpanded, setWordsExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(WORDS_EXPANDED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORDS_EXPANDED_KEY, String(wordsExpanded));
+    } catch {
+      // Keep the disclosure usable when browser storage is unavailable.
+    }
+  }, [wordsExpanded]);
   const levels = useMemo(() => summarizeWordMastery(words), [words]);
   const mastered = levels[levels.length - 1];
   const filtered = useMemo(() => words
@@ -63,26 +78,42 @@ export default function WordMastery({ words }: { words: Word[] }) {
             <h4 className="font-medium text-white">{selected === 'all' ? 'All words' : levels.find(level => level.id === selected)?.label} <span className="text-sm text-gray-400">({filtered.length})</span></h4>
             {selected !== 'all' && <button type="button" onClick={() => { setSelected('all'); setPage(0); }} className="text-xs text-gray-400 hover:text-white underline">Show all</button>}
           </div>
-          <input type="search" aria-label="Search mastery words" placeholder="Find a word…" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} className="w-full sm:w-48 rounded-lg border border-gray-600 bg-gray-900/60 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-emerald-400 focus:outline-none" />
+          <button
+            type="button"
+            aria-expanded={wordsExpanded}
+            aria-controls="mastery-word-list"
+            onClick={() => setWordsExpanded(expanded => !expanded)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-600 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            {wordsExpanded ? 'Hide words' : 'Show words'}
+            <svg className={`h-4 w-4 transition-transform motion-reduce:transition-none ${wordsExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden="true">
+              <path d="m5 7.5 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
-        {visible.length ? <div className="grid sm:grid-cols-2 gap-2">
-          {visible.map(word => {
-            const level = getMasteryLevel(word.interval);
-            return (
-              <div key={word.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-800/70 border border-gray-700/60 px-3 py-2.5">
-                <div className="min-w-0"><p className="text-sm font-medium text-white break-words">{word.english}</p><p className={`text-xs mt-0.5 ${COLORS[level.id].text}`}>{level.label}{word.status === 'problem' && <span className="text-red-300"> · Needs practice</span>}</p></div>
-                <span title="Review interval" className="shrink-0 text-sm text-gray-300 tabular-nums">{word.interval} <span className="text-xs text-gray-500">{word.interval === 1 ? 'day' : 'days'}</span></span>
-              </div>
-            );
-          })}
-        </div> : <p className="text-sm text-gray-400 py-4 text-center">{words.length ? 'No words in this selection yet.' : 'Review your first words to start building mastery.'}</p>}
-        {filtered.length > PAGE_SIZE && <div className="flex items-center justify-between gap-3 text-xs text-gray-400">
-          <span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
-          <div className="flex gap-2">
-            <button type="button" aria-label="Previous mastery words" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="rounded-lg border border-gray-600 px-3 py-2 text-gray-300 hover:bg-gray-700 disabled:opacity-30">Previous</button>
-            <button type="button" aria-label="Next mastery words" disabled={(currentPage + 1) * PAGE_SIZE >= filtered.length} onClick={() => setPage(currentPage + 1)} className="rounded-lg border border-gray-600 px-3 py-2 text-gray-300 hover:bg-gray-700 disabled:opacity-30">Next</button>
+        <div id="mastery-word-list" hidden={!wordsExpanded} className="space-y-3">
+          <div className="flex justify-end">
+            <input type="search" aria-label="Search mastery words" placeholder="Find a word…" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} className="w-full sm:w-48 rounded-lg border border-gray-600 bg-gray-900/60 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-emerald-400 focus:outline-none" />
           </div>
-        </div>}
+          {visible.length ? <div className="grid sm:grid-cols-2 gap-2">
+            {visible.map(word => {
+              const level = getMasteryLevel(word.interval);
+              return (
+                <div key={word.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-800/70 border border-gray-700/60 px-3 py-2.5">
+                  <div className="min-w-0"><p className="text-sm font-medium text-white break-words">{word.english}</p><p className={`text-xs mt-0.5 ${COLORS[level.id].text}`}>{level.label}{word.status === 'problem' && <span className="text-red-300"> · Needs practice</span>}</p></div>
+                  <span title="Review interval" className="shrink-0 text-sm text-gray-300 tabular-nums">{word.interval} <span className="text-xs text-gray-500">{word.interval === 1 ? 'day' : 'days'}</span></span>
+                </div>
+              );
+            })}
+          </div> : <p className="text-sm text-gray-400 py-4 text-center">{words.length ? 'No words in this selection yet.' : 'Review your first words to start building mastery.'}</p>}
+          {filtered.length > PAGE_SIZE && <div className="flex items-center justify-between gap-3 text-xs text-gray-400">
+            <span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+            <div className="flex gap-2">
+              <button type="button" aria-label="Previous mastery words" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="rounded-lg border border-gray-600 px-3 py-2 text-gray-300 hover:bg-gray-700 disabled:opacity-30">Previous</button>
+              <button type="button" aria-label="Next mastery words" disabled={(currentPage + 1) * PAGE_SIZE >= filtered.length} onClick={() => setPage(currentPage + 1)} className="rounded-lg border border-gray-600 px-3 py-2 text-gray-300 hover:bg-gray-700 disabled:opacity-30">Next</button>
+            </div>
+          </div>}
+        </div>
       </div>
     </section>
   );
