@@ -49,6 +49,7 @@ export interface WordSuggestion {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+  englishMeaningOptions?: string[];
 }
 
 export type AutoScheduleCadence = 'daily' | 'weekly' | 'monthly';

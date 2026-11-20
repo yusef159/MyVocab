@@ -28,7 +28,6 @@ import {
   bulkAddWords,
   getWordStats,
   getStreakData,
-  updateStreak,
   updateWordContent as dbUpdateWordContent,
   updateWordReviewCounts as dbUpdateWordReviewCounts,
   getReviewCountsByDateRange,
@@ -553,7 +552,6 @@ export const useVocabStore = create<VocabState>((set, get) => ({
       }
       
       await get().loadTags().catch(() => {});
-      await updateStreak();
       await get().loadWords();
       await get().loadStats();
       await get().loadStreak();

@@ -483,6 +483,7 @@ export default function ManualInput() {
 
           <TagPicker value={selectedTags} onChange={setSelectedTags} />
           <WordSelector
+            key={suggestions[0].english}
             suggestion={suggestions[0]}
             onSave={handleSave}
             onSkip={handleCancel}

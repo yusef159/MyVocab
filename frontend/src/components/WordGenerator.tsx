@@ -479,6 +479,7 @@ export default function WordGenerator() {
           {/* Word Selector */}
           <TagPicker value={selectedTags} onChange={setSelectedTags} />
           <WordSelector
+            key={suggestions[currentIndex].english}
             suggestion={suggestions[currentIndex]}
             topic={topic || undefined}
             onSave={handleSave}

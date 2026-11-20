@@ -25,6 +25,7 @@ export interface WordSuggestion {
   english: string;
   arabicMeanings: string[];
   exampleSentences: string[];
+  englishMeaningOptions?: string[];
 }
 
 export interface EnglishExplanationResult {
@@ -35,7 +36,15 @@ function parseWordSuggestions(content: string): WordSuggestion[] {
   const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   const parsed = JSON.parse(raw);
   const arr = Array.isArray(parsed) ? parsed : [parsed];
-  return arr as WordSuggestion[];
+  return arr.map((suggestion) => ({
+    ...suggestion,
+    englishMeaningOptions: Array.isArray(suggestion.englishMeaningOptions)
+      ? [...new Set<string>(suggestion.englishMeaningOptions
+          .filter((value: unknown): value is string => typeof value === 'string')
+          .map((value: string) => value.trim())
+          .filter(Boolean))].slice(0, 3)
+      : [],
+  })) as WordSuggestion[];
 }
 
 export async function generateWords(
@@ -44,7 +53,7 @@ export async function generateWords(
   level?: WordLevel
 ): Promise<WordSuggestion[]> {
   const prompt = generateWordsPrompt(count, topic, level ?? 'B2');
-  return generateWordsByPrompt(prompt, 2000);
+  return generateWordsByPrompt(prompt, Math.max(2000, count * 450));
 }
 
 export async function generateAutoScheduledWords(
@@ -95,7 +104,7 @@ export async function suggestMeanings(word: string): Promise<WordSuggestion> {
         content: prompt,
       },
     ],
-    max_completion_tokens: 500,
+    max_completion_tokens: 800,
   });
 
   const content = response.choices[0]?.message?.content;
