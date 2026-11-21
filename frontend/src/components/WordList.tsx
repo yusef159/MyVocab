@@ -787,7 +787,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-4">
               <div className="bg-gray-700/50 rounded-lg p-4">
                 <p className="text-gray-400 text-xs uppercase tracking-wide">Known Count</p>
                 {isEditingCounts ? (
@@ -845,7 +845,7 @@ function WordInfoModal({ wordId, onClose }: WordInfoModalProps) {
             )}
 
             {!isEditingCounts && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 [&>div]:min-w-0 [&>div]:break-words [&>div]:p-3 sm:[&>div]:p-4">
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Total Reviews</p>
                   <p className="mt-2 text-2xl font-bold text-white">{totalReviews}</p>
