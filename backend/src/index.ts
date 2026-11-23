@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 import wordsRouter from './routes/words.js';
 import grammarRouter from './routes/grammar.js';
 import dataRouter from './routes/data.js';
+import telegramRouter from './routes/telegram.js';
+import { startTelegramReminderScheduler } from './services/telegramReminder.js';
 import { initDatabase } from './db/index.js';
 import { startAutoWordScheduler } from './services/autoWordScheduler.js';
 import { startAutoBackupScheduler } from './services/autoBackupScheduler.js';
@@ -21,6 +23,7 @@ const PORT = process.env.PORT || 4000;
 initDatabase();
 startAutoWordScheduler();
 startAutoBackupScheduler();
+startTelegramReminderScheduler();
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -29,6 +32,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use('/api/words', wordsRouter);
 app.use('/api/grammar', grammarRouter);
 app.use('/api/data', dataRouter);
+app.use('/api/telegram', telegramRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });

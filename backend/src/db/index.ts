@@ -143,7 +143,9 @@ export type AppStateKey =
   | 'risk:completed_date'
   | 'reading_fluency:state'
   | 'streak:daily_goal'
-  | 'problem:streak_goal';
+  | 'problem:streak_goal'
+  | 'telegram:reminder_config'
+  | 'telegram:reminder_state';
 
 export interface BackupPayloadV1 {
   schemaVersion: 1;
@@ -337,7 +339,7 @@ function toStreakData(row: Record<string, unknown> | undefined): StreakData {
   };
 }
 
-function getStreakDailyGoal(): number {
+export function getStreakDailyGoal(): number {
   const value = getAppStateJson<number>(STREAK_DAILY_GOAL_KEY);
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return DEFAULT_STREAK_DAILY_GOAL;

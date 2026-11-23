@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import TelegramSettings from './TelegramSettings';
 import { useVocabStore } from '../stores/vocabStore';
 import { MIN_STREAK_DAILY_GOAL, MIN_PROBLEM_STREAK_GOAL, MAX_PROBLEM_STREAK_GOAL, DEFAULT_PROBLEM_STREAK_GOAL } from '../db';
 
@@ -193,6 +194,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
+      <TelegramSettings />
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700">
         <button
