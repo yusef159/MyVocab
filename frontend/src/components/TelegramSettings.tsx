@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import SettingsSection, { SettingsSwitch } from './SettingsSection';
 
 interface ReminderConfig { enabled: boolean; timeOfDay: string; timezone: string }
 interface ReminderStatus {
@@ -16,7 +17,7 @@ function errorMessage(error: unknown): string {
 
 export default function TelegramSettings() {
   const [status, setStatus] = useState<ReminderStatus | null>(null);
-  const [config, setConfig] = useState<ReminderConfig>({ enabled: false, timeOfDay: '21:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+  const [schedule, setSchedule] = useState<Omit<ReminderConfig, 'enabled'>>({ timeOfDay: '21:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,7 +29,7 @@ export default function TelegramSettings() {
     try {
       const { data } = await axios.get<ReminderStatus>('/api/telegram');
       setStatus(data);
-      setConfig(data.config);
+      setSchedule({ timeOfDay: data.config.timeOfDay, timezone: data.config.timezone });
     } catch (error) { setError(errorMessage(error)); }
     finally { setLoading(false); }
   }
@@ -36,11 +37,21 @@ export default function TelegramSettings() {
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    if (!status) return;
+    await update({ ...schedule, enabled: status.config.enabled }, 'Telegram reminder settings saved.');
+  }
+
+  async function toggle(enabled: boolean) {
+    if (!status) return;
+    await update({ ...status.config, enabled }, enabled ? 'Telegram reminders turned on.' : 'Telegram reminders turned off.');
+  }
+
+  async function update(config: ReminderConfig, successMessage: string) {
     setBusy(true); setError(''); setMessage('');
     try {
       const { data } = await axios.put<ReminderStatus>('/api/telegram', config);
-      setStatus(data); setConfig(data.config);
-      setMessage('Telegram reminder settings saved.');
+      setStatus(data);
+      setMessage(successMessage);
     } catch (error) { setError(errorMessage(error)); }
     finally { setBusy(false); }
   }
@@ -55,31 +66,48 @@ export default function TelegramSettings() {
 
   const inputClass = 'w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500';
   return (
-    <section aria-labelledby="telegram-heading" className="bg-gray-800 rounded-xl border border-gray-700 p-4 sm:p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="telegram-heading" className="text-base font-semibold text-white">Telegram streak reminders</h2>
-        <span className={`text-sm ${status?.configured ? 'text-emerald-300' : 'text-amber-300'}`}>
-          {loading ? 'Checking configuration...' : !status ? 'Configuration unavailable' : status.configured ? 'Bot configured' : 'Bot not configured'}
-        </span>
-      </div>
+    <SettingsSection
+      id="telegram"
+      title="Telegram streak reminders"
+      defaultExpanded={false}
+      summary={
+        <>
+          <span className={status?.configured ? 'text-emerald-300' : 'text-amber-300'}>
+            {loading ? 'Checking configuration...' : !status ? 'Configuration unavailable' : status.configured ? 'Bot configured' : 'Bot not configured'}
+          </span>
+          {' · '}
+          {status?.configured
+            ? status.config.enabled
+              ? `Daily at ${status.config.timeOfDay} (${status.config.timezone}) if your goal is incomplete`
+              : 'Reminders off'
+            : 'Reminds you when your daily goal is incomplete'}
+        </>
+      }
+      feedback={
+        error ? <p role="alert" className="text-red-300">{error}</p>
+          : message ? <p role="status" className="text-emerald-300">{message}</p> : null
+      }
+      action={
+        <SettingsSwitch
+          label="Daily Telegram reminders"
+          checked={status?.config.enabled ?? false}
+          disabled={busy || loading || !status || (!status.configured && !status.config.enabled)}
+          onChange={enabled => void toggle(enabled)}
+        />
+      }
+    >
       <p className="text-sm text-gray-400">Get one reminder per day at your chosen time if your daily streak goal is still incomplete. Completed days are skipped. The server must be running; you can close the app.</p>
       {status && !status.configured && <p className="text-sm text-amber-200">Set {status.missing.join(' and ')} in backend/.env and restart the server. Setup instructions are below.</p>}
       {status?.configured && <p className="text-sm text-gray-400">Server credentials are present. Send a test message to confirm Telegram can deliver to your chat.</p>}
-      {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-      {message && <p role="status" className="text-sm text-emerald-300">{message}</p>}
       {!status && !loading && <button type="button" onClick={() => void load()} className="text-sm text-emerald-300 underline">Retry loading settings</button>}
       <form onSubmit={save} className="space-y-4">
         <fieldset disabled={busy || loading || !status} className="space-y-4 disabled:opacity-60">
-          <label className="flex items-center gap-3 text-sm text-white">
-            <input type="checkbox" checked={config.enabled} disabled={!status?.configured} onChange={event => setConfig({ ...config, enabled: event.target.checked })} className="accent-emerald-500 h-4 w-4" />
-            Enable daily Telegram reminder
-          </label>
           <div className="grid sm:grid-cols-2 gap-4 max-w-xl">
             <label className="block text-sm text-gray-400 space-y-2"><span>Reminder time</span>
-              <input type="time" required value={config.timeOfDay} onChange={event => setConfig({ ...config, timeOfDay: event.target.value })} className={inputClass} />
+              <input type="time" required value={schedule.timeOfDay} onChange={event => setSchedule({ ...schedule, timeOfDay: event.target.value })} className={inputClass} />
             </label>
             <label className="block text-sm text-gray-400 space-y-2"><span>Timezone</span>
-              <input type="text" required list="telegram-timezones" placeholder="Asia/Jerusalem" value={config.timezone} onChange={event => setConfig({ ...config, timezone: event.target.value })} className={inputClass} />
+              <input type="text" required list="telegram-timezones" placeholder="Asia/Jerusalem" value={schedule.timezone} onChange={event => setSchedule({ ...schedule, timezone: event.target.value })} className={inputClass} />
               <datalist id="telegram-timezones"><option value={Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'} /><option value="UTC" /><option value="Asia/Jerusalem" /></datalist>
             </label>
           </div>
@@ -101,9 +129,9 @@ export default function TelegramSettings() {
           <li>Open your new bot and press Start or send /start.</li>
           <li>Use Telegram's getUpdates API with your token to find message.chat.id. See README.md for a PowerShell command that retrieves it.</li>
           <li>Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to backend/.env, then restart the backend (or recreate your Docker container).</li>
-          <li>Reload Settings, send a test message, choose your time and timezone, enable the reminder, and save.</li>
+          <li>Reload Settings, send a test message, save your time and timezone, then turn on reminders using the switch at the top of this section.</li>
         </ol>
       </details>
-    </section>
+    </SettingsSection>
   );
 }

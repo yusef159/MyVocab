@@ -211,7 +211,7 @@ interface VocabState {
     destinationPath: string;
     active: boolean;
   }) => Promise<boolean>;
-  setBackupScheduleActive: (active: boolean) => Promise<void>;
+  setBackupScheduleActive: (active: boolean) => Promise<boolean>;
   runBackupNow: (destinationPath?: string) => Promise<{ ok: boolean; destination?: string; message?: string }>;
   
   saveWord: (
@@ -510,9 +510,11 @@ export const useVocabStore = create<VocabState>((set, get) => ({
     try {
       const backupSchedule = await dbSetBackupScheduleActive(active);
       set({ backupSchedule, error: null });
+      return true;
     } catch (error) {
       console.error('Failed to update backup schedule state:', error);
       set({ error: 'Failed to update backup schedule state' });
+      return false;
     }
   },
 

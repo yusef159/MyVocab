@@ -96,7 +96,7 @@ MIT
 
 ## Telegram streak reminders
 
-Settings includes a Telegram configuration indicator, an enable checkbox, a daily reminder time and IANA timezone (for example `Asia/Jerusalem`), and a **Send test message** button. Credentials stay on the backend; the browser never receives the bot token.
+Settings includes a Telegram configuration indicator, an on/off switch in the section header, a daily reminder time and IANA timezone (for example `Asia/Jerusalem`), and a **Send test message** button. Credentials stay on the backend; the browser never receives the bot token.
 
 1. In Telegram, open the official [@BotFather](https://t.me/BotFather), send `/newbot`, and follow its prompts to choose a name and username. Copy the token it gives you and keep it private. See [Telegram's bot creation guide](https://core.telegram.org/bots/tutorial#obtain-your-bot-token).
 2. Open your newly created bot's chat and press **Start**, or send `/start`.
@@ -119,8 +119,8 @@ Settings includes a Telegram configuration indicator, an enable checkbox, a dail
    ```
 
 5. Restart the backend. For the existing Docker Compose deployment, run `docker compose up -d --build --force-recreate web` from the project root; Compose already loads `backend/.env` and persists the SQLite database in `./data`.
-6. Open **Settings**, confirm **Bot configured**, and click **Send test message**. This confirms delivery; the configuration indicator itself only checks that both credentials are present.
-7. Choose a time and timezone, check **Enable daily Telegram reminder**, and click **Save Telegram settings**.
+6. Open **Settings**, confirm **Bot configured**, and expand **Telegram streak reminders** to send a test message. This confirms delivery; the configuration indicator itself only checks that both credentials are present.
+7. Choose a time and timezone, click **Save Telegram settings**, then turn on reminders using the switch in the section header.
 
 The backend checks once per minute, including on startup, so reminders work with the browser closed. Keep the server running with internet access to `api.telegram.org`. If it starts after the selected time, it checks the current day immediately; it does not replay missed days. Failed deliveries retry every five minutes, rechecking completion before each attempt. Successful deliveries and skipped days are persisted in SQLite to prevent repeat reminders after restarts or schedule edits. Settings shows the last scheduled delivery, skipped completion, or delivery error. Reminder settings/history remain in SQLite and are not included in JSON vocabulary exports.
 

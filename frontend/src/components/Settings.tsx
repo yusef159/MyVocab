@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import TelegramSettings from './TelegramSettings';
+import SettingsSection, { SettingsSwitch } from './SettingsSection';
 import { useVocabStore } from '../stores/vocabStore';
 import { MIN_STREAK_DAILY_GOAL, MIN_PROBLEM_STREAK_GOAL, MAX_PROBLEM_STREAK_GOAL, DEFAULT_PROBLEM_STREAK_GOAL } from '../db';
 
@@ -38,18 +39,26 @@ export default function Settings() {
     problemStreakGoal,
   } = useVocabStore();
 
-  const [enabled, setEnabled] = useState(false);
+  const enabled = backupSchedule?.active ?? false;
+  const {
+    cadence: savedCadence,
+    timeOfDay: savedTime,
+    dayOfWeek: savedWeekday,
+    dayOfMonth: savedMonthDay,
+    timezone: savedTimezone,
+    destinationPath: savedDestination,
+  } = backupSchedule ?? {};
   const [cadence, setCadence] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [timeOfDay, setTimeOfDay] = useState('03:00');
   const [dayOfWeek, setDayOfWeek] = useState(0);
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   const [destinationPath, setDestinationPath] = useState('');
-  const [expandedPanel, setExpandedPanel] = useState<'backup' | null>('backup');
+  const [isLoadingBackup, setIsLoadingBackup] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isSavingStreakGoal, setIsSavingStreakGoal] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [streakGoalMessage, setStreakGoalMessage] = useState<string | null>(null);
   const [streakGoal, setStreakGoal] = useState(MIN_STREAK_DAILY_GOAL);
   const [isSavingProblemStreakGoal, setIsSavingProblemStreakGoal] = useState(false);
@@ -57,26 +66,20 @@ export default function Settings() {
   const [problemStreakGoalInput, setProblemStreakGoalInput] = useState(DEFAULT_PROBLEM_STREAK_GOAL);
 
   useEffect(() => {
-    void loadBackupSchedule();
+    void loadBackupSchedule().finally(() => setIsLoadingBackup(false));
     void loadStreakDailyGoal();
     void loadProblemStreakGoal();
   }, [loadBackupSchedule, loadStreakDailyGoal, loadProblemStreakGoal]);
 
   useEffect(() => {
-    if (backupSchedule) {
-      setEnabled(backupSchedule.active);
-      setCadence(backupSchedule.cadence);
-      setTimeOfDay(backupSchedule.timeOfDay);
-      setDayOfWeek(backupSchedule.dayOfWeek ?? 0);
-      setDayOfMonth(backupSchedule.dayOfMonth ?? 1);
-      setTimezone(backupSchedule.timezone);
-      setDestinationPath(backupSchedule.destinationPath);
-      return;
-    }
-    if (backupDefaultDestinationPath) {
-      setDestinationPath(backupDefaultDestinationPath);
-    }
-  }, [backupSchedule, backupDefaultDestinationPath]);
+    if (savedCadence) setCadence(savedCadence);
+    if (savedTime) setTimeOfDay(savedTime);
+    setDayOfWeek(savedWeekday ?? 0);
+    setDayOfMonth(savedMonthDay ?? 1);
+    if (savedTimezone) setTimezone(savedTimezone);
+    const destination = savedDestination ?? backupDefaultDestinationPath;
+    if (destination) setDestinationPath(destination);
+  }, [savedCadence, savedTime, savedWeekday, savedMonthDay, savedTimezone, savedDestination, backupDefaultDestinationPath]);
 
   useEffect(() => {
     if (!message) return;
@@ -105,13 +108,12 @@ export default function Settings() {
   }, [problemStreakGoalMessage]);
 
   const handleToggle = async (nextActive: boolean) => {
-    setEnabled(nextActive);
     setIsSaving(true);
+    setMessage(null);
     try {
-      if (backupSchedule) {
-        await setBackupScheduleActive(nextActive);
-      } else {
-        const ok = await saveBackupSchedule({
+      const ok = backupSchedule
+        ? await setBackupScheduleActive(nextActive)
+        : await saveBackupSchedule({
           cadence,
           timezone,
           timeOfDay,
@@ -120,12 +122,11 @@ export default function Settings() {
           destinationPath,
           active: nextActive,
         });
-        if (!ok) {
-          setEnabled(false);
-        }
+      if (ok) {
+        setMessage({ ok, text: nextActive ? 'Automatic backup turned on.' : 'Automatic backup turned off.' });
+      } else {
+        setMessage({ ok, text: 'Failed to update automatic backup. Try again.' });
       }
-      await loadBackupSchedule();
-      setMessage(nextActive ? 'Automatic backup turned on.' : 'Automatic backup turned off.');
     } finally {
       setIsSaving(false);
     }
@@ -143,7 +144,7 @@ export default function Settings() {
       active: enabled,
     });
     await loadBackupSchedule();
-    setMessage(ok ? 'Backup schedule saved.' : 'Failed to save backup schedule.');
+    setMessage({ ok, text: ok ? 'Backup schedule saved.' : 'Failed to save backup schedule.' });
     setIsSaving(false);
   };
 
@@ -152,11 +153,10 @@ export default function Settings() {
     setMessage(null);
     try {
       const result = await runBackupNow(destinationPath.trim() || undefined);
-      if (result.ok) {
-        setMessage('Backup completed and uploaded to Google Drive.');
-      } else {
-        setMessage(result.message ?? 'Backup failed.');
-      }
+      setMessage({
+        ok: result.ok,
+        text: result.ok ? 'Backup completed and uploaded to Google Drive.' : result.message ?? 'Backup failed.',
+      });
       await loadBackupSchedule();
     } finally {
       setIsBackingUp(false);
@@ -192,202 +192,173 @@ export default function Settings() {
     setIsSavingProblemStreakGoal(false);
   };
 
+  const backupSummary = [
+    enabled ? 'Automatic backup on' : 'Automatic backup off',
+    enabled && backupSchedule?.nextRunAt && `Next: ${formatRunDate(backupSchedule.nextRunAt)}`,
+    backupRunStatus.lastRun?.status === 'failed' ? 'Last backup failed'
+      : !enabled && backupRunStatus.lastSuccess && `Last backup: ${formatRunDate(backupRunStatus.lastSuccess.completedAt)}`,
+  ].filter(Boolean).join(' · ');
+
   return (
     <div className="space-y-6">
       <TelegramSettings />
 
-      <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700">
-        <button
-          type="button"
-          onClick={() => setExpandedPanel((prev) => (prev === 'backup' ? null : 'backup'))}
-          className="w-full px-4 sm:px-6 py-4 text-left flex items-center justify-between hover:bg-gray-700/40 transition-colors"
-        >
-          <div className="min-w-0">
-            <p className="text-base font-semibold text-white">Google Drive Backup</p>
-            <p className="text-sm text-gray-400 truncate">
-              {enabled ? `On • Next: ${formatRunDate(backupSchedule?.nextRunAt)}` : 'Off'}
+      <SettingsSection
+        id="backup"
+        title="Google Drive Backup"
+        summary={isLoadingBackup ? 'Loading backup schedule…' : backupSummary}
+        action={
+          <SettingsSwitch
+            label="Automatic Google Drive backup"
+            checked={enabled}
+            onChange={active => void handleToggle(active)}
+            disabled={isLoadingBackup || isSaving || isBackingUp || (!backupSchedule && !destinationPath.trim())}
+          />
+        }
+        feedback={
+          message && (
+            <p role={message.ok ? 'status' : 'alert'} className={message.ok ? 'text-emerald-300' : 'text-red-300'}>
+              {message.text}
             </p>
-          </div>
-          <svg
-            className={`h-5 w-5 text-gray-400 transition-transform ${expandedPanel === 'backup' ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+          )
+        }
+      >
+        {error && !message && <p role="alert" className="text-sm text-red-300">{error}</p>}
 
-        {expandedPanel === 'backup' && (
-          <div className="px-4 sm:px-6 py-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-gray-400">Enable automatic backup</p>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={enabled}
-                onClick={() => void handleToggle(!enabled)}
-                disabled={isSaving}
-                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
-                  enabled ? 'bg-emerald-500' : 'bg-gray-600'
-                } ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                    enabled ? 'translate-x-8' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {(message || error) && (
-              <div
-                className={`p-3 rounded-lg border text-sm ${
-                  error && !message
-                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
-                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                }`}
-              >
-                {message ?? error}
-              </div>
+        {(backupRunStatus.lastSuccess || backupRunStatus.lastRun?.status === 'failed') && (
+          <div className="space-y-2 rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+            {backupRunStatus.lastSuccess && (
+              <p className="text-sm text-emerald-300">
+                Last successful backup: {formatRunDate(backupRunStatus.lastSuccess.completedAt)}
+                {' → '}
+                <span className="font-mono text-emerald-400/90 break-all">
+                  {backupRunStatus.lastSuccess.destination}
+                </span>
+              </p>
             )}
-
-            {(backupRunStatus.lastSuccess || backupRunStatus.lastRun?.status === 'failed') && (
-              <div className="space-y-2 rounded-lg border border-gray-700 bg-gray-900/40 p-3">
-                {backupRunStatus.lastSuccess && (
-                  <p className="text-sm text-emerald-300">
-                    Last successful backup: {formatRunDate(backupRunStatus.lastSuccess.completedAt)}
-                    {' → '}
-                    <span className="font-mono text-emerald-400/90 break-all">
-                      {backupRunStatus.lastSuccess.destination}
-                    </span>
-                  </p>
-                )}
-                {backupRunStatus.lastRun?.status === 'failed' && (
-                  <p className="text-sm text-red-300 break-words">
-                    Last backup failed: {formatRunDate(backupRunStatus.lastRun.completedAt)}
-                    {backupRunStatus.lastRun.error ? ` — ${backupRunStatus.lastRun.error}` : ''}
-                  </p>
-                )}
-              </div>
+            {backupRunStatus.lastRun?.status === 'failed' && (
+              <p className="text-sm text-red-300 break-words">
+                Last backup failed: {formatRunDate(backupRunStatus.lastRun.completedAt)}
+                {backupRunStatus.lastRun.error ? ` — ${backupRunStatus.lastRun.error}` : ''}
+              </p>
             )}
-
-            <div>
-              <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Google Drive backup path</label>
-              <input
-                type="text"
-                value={destinationPath}
-                onChange={(e) => setDestinationPath(e.target.value)}
-                placeholder="gdrive:MyVocab backup/myvocab-backup.json"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Backup every</label>
-                <select
-                  value={cadence}
-                  onChange={(e) => setCadence(e.target.value as 'daily' | 'weekly' | 'monthly')}
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Time (24h)</label>
-                <input
-                  type="time"
-                  value={timeOfDay}
-                  onChange={(e) => setTimeOfDay(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
-            {cadence === 'weekly' && (
-              <div>
-                <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Weekday</label>
-                <select
-                  value={dayOfWeek}
-                  onChange={(e) => setDayOfWeek(parseInt(e.target.value, 10))}
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-                >
-                  {WEEKDAY_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {cadence === 'monthly' && (
-              <div>
-                <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Day of month</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)))}
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Timezone</label>
-              <input
-                type="text"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={isSaving || isBackingUp || !destinationPath.trim()}
-                className={`px-5 py-3 rounded-lg font-medium transition-colors ${
-                  isSaving || isBackingUp || !destinationPath.trim()
-                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-500'
-                }`}
-              >
-                {isSaving ? 'Saving...' : 'Save Backup Settings'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void handleBackupNow()}
-                disabled={isBackingUp || isSaving || !destinationPath.trim()}
-                className={`px-5 py-3 rounded-lg font-medium transition-colors ${
-                  isBackingUp || isSaving || !destinationPath.trim()
-                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-500'
-                }`}
-              >
-                {isBackingUp ? 'Backing up...' : 'Backup Now'}
-              </button>
-            </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 sm:p-6 space-y-4">
         <div>
-          <p className="text-base font-semibold text-white">Daily Streak Goal</p>
-          <p className="text-sm text-gray-400">
-            Number of reviews needed per day to count toward your streak (minimum {MIN_STREAK_DAILY_GOAL}).
-          </p>
+          <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Google Drive backup path</label>
+          <input
+            type="text"
+            value={destinationPath}
+            onChange={(e) => setDestinationPath(e.target.value)}
+            placeholder="gdrive:MyVocab backup/myvocab-backup.json"
+            className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+          />
         </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Backup every</label>
+            <select
+              value={cadence}
+              onChange={(e) => setCadence(e.target.value as 'daily' | 'weekly' | 'monthly')}
+              className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Time (24h)</label>
+            <input
+              type="time"
+              value={timeOfDay}
+              onChange={(e) => setTimeOfDay(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        {cadence === 'weekly' && (
+          <div>
+            <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Weekday</label>
+            <select
+              value={dayOfWeek}
+              onChange={(e) => setDayOfWeek(parseInt(e.target.value, 10))}
+              className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+            >
+              {WEEKDAY_OPTIONS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {cadence === 'monthly' && (
+          <div>
+            <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Day of month</label>
+            <input
+              type="number"
+              min={1}
+              max={31}
+              value={dayOfMonth}
+              onChange={(e) => setDayOfMonth(Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+              className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        )}
+
+        <div>
+          <label className="block text-gray-400 text-sm uppercase tracking-wide mb-2">Timezone</label>
+          <input
+            type="text"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={isLoadingBackup || isSaving || isBackingUp || !destinationPath.trim()}
+            className={`px-5 py-3 rounded-lg font-medium transition-colors ${
+              isLoadingBackup || isSaving || isBackingUp || !destinationPath.trim()
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+            }`}
+          >
+            {isSaving ? 'Saving...' : 'Save Backup Settings'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleBackupNow()}
+            disabled={isLoadingBackup || isBackingUp || isSaving || !destinationPath.trim()}
+            className={`px-5 py-3 rounded-lg font-medium transition-colors ${
+              isLoadingBackup || isBackingUp || isSaving || !destinationPath.trim()
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
+          >
+            {isBackingUp ? 'Backing up...' : 'Backup Now'}
+          </button>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="daily-streak"
+        title="Daily Streak Goal"
+        summary={`${streakDailyGoal} reviews per day to keep your streak`}
+      >
+        <p className="text-sm text-gray-400">
+          Number of reviews needed per day to count toward your streak (minimum {MIN_STREAK_DAILY_GOAL}).
+        </p>
 
         {streakGoalMessage && (
           <div
@@ -424,15 +395,18 @@ export default function Settings() {
         >
           {isSavingStreakGoal ? 'Saving...' : 'Save Streak Goal'}
         </button>
-      </div>
+      </SettingsSection>
 
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 sm:p-6 space-y-4">
-        <div>
-          <p className="text-base font-semibold text-white">Problem Word Streak</p>
-          <p className="text-sm text-gray-400">
-            How many times in a row you must answer a problem word correctly before it becomes known. Set to 0 for no streak (becomes known on the first correct answer). Max {MAX_PROBLEM_STREAK_GOAL}.
-          </p>
-        </div>
+      <SettingsSection
+        id="problem-streak"
+        title="Problem Word Streak"
+        summary={problemStreakGoal <= 1
+          ? 'First correct answer clears a problem word'
+          : `${problemStreakGoal} correct answers in a row to clear a problem word`}
+      >
+        <p className="text-sm text-gray-400">
+          How many times in a row you must answer a problem word correctly before it becomes known. Set to 0 for no streak (becomes known on the first correct answer). Max {MAX_PROBLEM_STREAK_GOAL}.
+        </p>
 
         {problemStreakGoalMessage && (
           <div
@@ -505,7 +479,7 @@ export default function Settings() {
         >
           {isSavingProblemStreakGoal ? 'Saving...' : 'Save Problem Streak Goal'}
         </button>
-      </div>
+      </SettingsSection>
     </div>
   );
 }
