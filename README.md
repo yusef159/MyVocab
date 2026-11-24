@@ -1,139 +1,118 @@
-# MyVocab - AI-Powered Vocabulary Learning App
+# MyVocab
 
-A personal web app for learning English vocabulary with Arabic meanings. Uses AI to generate word suggestions and includes flashcard-based review with streak tracking.
+MyVocab is a personal app for learning English vocabulary with Arabic meanings. Build a word list, review it with flashcards, and track your progress from the dashboard.
 
-## Features
+- **Vocabulary** — Generate words by CEFR level or topic, look up meanings for words you enter, organize words with tags, or schedule automatic word generation.
+- **Review and practice** — Use spaced repetition, focus on at-risk or problem words, take quick quizzes and practice tests, and work through grammar and reading-aloud exercises with AI feedback.
+- **Streaks and reminders** — Set a daily review goal and a correct-answer streak for problem words. The daily streak resets at 00:00 UTC. Flashcard reviews count toward it. Adding words and taking practice tests do not.
+- **Backups** — Export or restore a JSON backup from **My Words**, or schedule backups to Google Drive from **Settings**.
 
-- **AI Word Generator**: Generate vocabulary words by CEFR level (A2/B1/B2/C1) with optional topics
-- **Manual Input**: Enter any English word and get AI-suggested Arabic meanings
-- **Flashcards**: Review all words with flip cards and track known/problem status
-- **Problem Deck**: Focused review on words you're struggling with
-- **Streaks**: Daily activity tracking with current and longest streak display
-- **Dashboard**: Overview of your learning progress and statistics
+## Run with Docker Compose
 
-## Tech Stack
+Docker Compose runs the Express API and the built React frontend in one service named `web`. From the repository root, copy the example environment file if `backend/.env` does not already exist:
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Node.js + Express + TypeScript
-- **AI**: OpenAI GPT-4o-mini
-- **Storage**: IndexedDB (browser-based, no server database needed)
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- OpenAI API key
-
-### Setup
-
-1. **Clone and install dependencies**:
-
-```bash
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
+```sh
+cp backend/.env.example backend/.env
 ```
 
-2. **Configure environment**:
+Set `OPENAI_API_KEY` in `backend/.env` to enable AI features. Then start the app:
 
-```bash
-# In backend folder, create .env file
-cd backend
-cp .env.example .env
-# Edit .env and add your OpenAI API key
+```sh
+docker compose up -d --build web
+docker compose ps web
 ```
 
-3. **Start the servers**:
+Open `http://localhost:4000` on the Docker host, or use the host's IP address from another device. The health endpoint is `/api/health`. To troubleshoot startup, run `docker compose logs --tail=50 web`.
 
-```bash
-# Terminal 1: Start backend (port 3001)
+### Update the Raspberry Pi
+
+The [deployment workflow](.github/workflows/deploy.yml) pulls `main` into `~/apps/myVocab` on the Pi and rebuilds on pushes to `main` when GitHub Actions is configured for that host. For a manual update, run the following on the Pi once the updated code is in that folder:
+
+```sh
+cd ~/apps/myVocab
+docker compose up -d --build web
+```
+
+Frontend and backend compilation use separate Docker build stages. Docker can reuse unchanged layers. To see which steps are being rebuilt, run `docker compose --progress plain build web` from the same folder.
+
+If you only changed `backend/.env`, recreate the container to load the new values without building:
+
+```sh
+docker compose up -d --force-recreate web
+```
+
+Compose stores SQLite data in `./data/myvocab.db` on the host. Container recreation keeps that directory in place.
+
+## Run locally without Docker
+
+Use Node.js 22 or 24 with npm. From the repository root, create or update `backend/.env` using [the example file](backend/.env.example), then run:
+
+```sh
+npm --prefix frontend ci
+npm --prefix backend ci
+npm --prefix frontend run build
 cd backend
 npm run dev
-
-# Terminal 2: Start frontend (port 3000)
-cd frontend
-npm run dev
 ```
 
-4. **Open the app**: Navigate to http://localhost:3000
+Open `http://localhost:4000`. Express serves the compiled frontend alongside the API. The frontend uses relative `/api` URLs, so the standalone Vite server on port 3000 needs an API proxy for full app functionality. With the commands above, rebuild from the repository root with `npm --prefix frontend run build` after frontend changes. The backend watcher handles changes to backend source files.
 
-## Project Structure
+## Settings
 
-```
-MyVocab cursor/
-├── frontend/           # React frontend
-│   ├── src/
-│   │   ├── components/ # UI components
-│   │   ├── db/         # IndexedDB schema (Dexie.js)
-│   │   ├── stores/     # Zustand state management
-│   │   ├── hooks/      # Custom React hooks
-│   │   └── types/      # TypeScript interfaces
-│   └── ...
-├── backend/            # Express API server
-│   ├── src/
-│   │   ├── routes/     # API endpoints
-│   │   ├── services/   # OpenAI integration
-│   │   └── prompts/    # AI prompt templates
-│   └── ...
-└── README.md
-```
+Telegram reminders, Google Drive Backup, Daily Streak Goal, and Problem Word Streak can each be expanded or collapsed. Each card shows a summary of its saved settings and remembers its open or closed state in the same browser. The Telegram and Google Drive switches work from their headers, even when the details are collapsed.
 
-## API Endpoints
+### Telegram streak reminders
 
-- `POST /api/words/generate` - Generate vocabulary words by level
-- `POST /api/words/suggest` - Get meanings for a specific word
-- `GET /health` - Health check endpoint
-
-## License
-
-MIT
-
-## Telegram streak reminders
-
-Settings includes a Telegram configuration indicator, an on/off switch in the section header, a daily reminder time and IANA timezone (for example `Asia/Jerusalem`), and a **Send test message** button. Credentials stay on the backend; the browser never receives the bot token.
-
-1. In Telegram, open the official [@BotFather](https://t.me/BotFather), send `/newbot`, and follow its prompts to choose a name and username. Copy the token it gives you and keep it private. See [Telegram's bot creation guide](https://core.telegram.org/bots/tutorial#obtain-your-bot-token).
-2. Open your newly created bot's chat and press **Start**, or send `/start`.
-3. Get your private chat ID using Telegram's [getUpdates API](https://core.telegram.org/bots/api#getupdates). In PowerShell, run the following locally, paste the token into the hidden prompt, and find the ID next to your Telegram name:
+1. To create a bot, send `/newbot` to [@BotFather](https://t.me/BotFather) and follow the prompts. For an existing bot, use its current token. [Telegram bot setup guide](https://core.telegram.org/bots/tutorial#obtain-your-bot-token)
+2. Open the bot's private chat, press **Start**, and send a message.
+3. Find your chat ID in `message.chat.id` using Telegram's [getUpdates API](https://core.telegram.org/bots/api#getupdates). On Windows, you can run this PowerShell snippet and paste the token at the hidden prompt:
 
    ```powershell
    $telegramSecret = Read-Host 'Bot token' -AsSecureString
    $telegramToken = [System.Net.NetworkCredential]::new('', $telegramSecret).Password
-   $telegramUpdates = Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$telegramToken/getUpdates" -Body @{ timeout = 0 }
-   $telegramUpdates.result | ForEach-Object { $_.message.chat } | Select-Object id, first_name, username -Unique
-   Remove-Variable telegramToken, telegramSecret, telegramUpdates
+   try {
+     $telegramUpdates = Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$telegramToken/getUpdates" -Body @{ timeout = 0 }
+     $telegramUpdates.result | ForEach-Object { $_.message.chat } |
+       Where-Object { $_.type -eq 'private' } | Select-Object id, first_name, username -Unique
+   } finally {
+     Remove-Variable telegramToken, telegramSecret, telegramUpdates -ErrorAction SilentlyContinue
+   }
    ```
 
-   If the list is empty, send the bot another message and try again. Use a dedicated bot: another process polling this bot or an existing webhook can interfere with `getUpdates`. No webhook or ongoing polling is needed for MyVocab reminders.
-4. Add these lines to your existing `backend/.env` (do not replace your other settings):
+   If the response is empty, send the bot a fresh message and try again. If another app already receives this bot's updates, use the chat ID from that app's incoming message data. MyVocab only sends messages.
+4. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to `backend/.env` on the machine running MyVocab. Keep the token private. [Recreate the Docker container](#update-the-raspberry-pi) or restart the local backend.
+5. Open **Settings → Telegram streak reminders**. **Bot configured** means both values are present. Click **Send test message** to confirm delivery, save a time and timezone such as `Asia/Jerusalem`, then turn reminders on using the header switch.
 
-   ```dotenv
-   TELEGRAM_BOT_TOKEN=your_token_from_BotFather
-   TELEGRAM_CHAT_ID=your_numeric_private_chat_id
-   ```
+The server sends a reminder only if the daily goal is incomplete at the scheduled check. The reminder time uses your chosen timezone, while streak completion uses the app's UTC day. The browser can be closed as long as the server is running. Test messages send immediately, even if the goal is complete.
 
-5. Restart the backend. For the existing Docker Compose deployment, run `docker compose up -d --build --force-recreate web` from the project root; Compose already loads `backend/.env` and persists the SQLite database in `./data`.
-6. Open **Settings**, confirm **Bot configured**, and expand **Telegram streak reminders** to send a test message. This confirms delivery; the configuration indicator itself only checks that both credentials are present.
-7. Choose a time and timezone, click **Save Telegram settings**, then turn on reminders using the switch in the section header.
+### Google Drive backup and restore
 
-The backend checks once per minute, including on startup, so reminders work with the browser closed. Keep the server running with internet access to `api.telegram.org`. If it starts after the selected time, it checks the current day immediately; it does not replay missed days. Failed deliveries retry every five minutes, rechecking completion before each attempt. Successful deliveries and skipped days are persisted in SQLite to prevent repeat reminders after restarts or schedule edits. Settings shows the last scheduled delivery, skipped completion, or delivery error. Reminder settings/history remain in SQLite and are not included in JSON vocabulary exports.
+Configure an rclone Google Drive remote on the host. If its configuration file is outside the default path in [docker-compose.yml](docker-compose.yml), set `RCLONE_CONFIG_FILE` to the host file path in the repository-root `.env` that Compose reads. You can also set `BACKUP_GDRIVE_DEST` there to override the default destination. Recreate the container after making either change.
 
-Completion follows the application's existing **UTC streak day** (reset at 00:00 UTC), regardless of the reminder timezone. Reaching the configured daily review goal, or having already earned today's streak, suppresses the message. Flashcard reviews count as usual; word additions and practice tests do not. The test button sends immediately even when the goal is complete and does not consume the daily reminder. This is a personal, single-user application: the configured chat receives reminders for this installation's shared streak.
+In **Settings → Google Drive Backup**, use a destination such as `gdrive:MyVocab backup/myvocab-backup.json`. Choose a daily, weekly, or monthly schedule and use the header switch to enable it. Use **Backup Now** to verify an upload and check the last run status in Settings.
 
-If delivery fails, check the token and chat ID, start the bot, and ensure it is not blocked. You can disable reminders in Settings at any time. If a token is exposed, revoke it with BotFather, update `backend/.env`, and restart the backend.
+A JSON backup contains words, tags, review history, daily counts, streaks, and grammar progress. Restoring replaces those records. Server configuration, reminder and backup schedules, and browser preferences are kept separately. If you're moving from an older browser-only version, **My Words** also has an option to import legacy IndexedDB data from the browser that contains it.
 
-## Review reliability
+## Project layout and checks
 
-Flashcard answers are saved before advancing or completing the session. The backend commits the word update, history event, daily count, and streak in one SQLite transaction. Retrying an unconfirmed answer in the current session reuses its review ID to avoid counting it twice.
+| Path | Contents |
+| --- | --- |
+| [frontend/](frontend/) | React, TypeScript, Vite, Tailwind CSS, and Zustand. Dexie reads legacy IndexedDB data for migration. |
+| [backend/](backend/) | Express API, SQLite via better-sqlite3, background schedules, and OpenAI integrations. |
+| [Dockerfile](Dockerfile) and [docker-compose.yml](docker-compose.yml) | Build and runtime definitions for the `web` service. |
 
-Daily activity continues to use UTC calendar dates; existing history is not shifted. Adding a word does not count as a review. Practice tests remain separate from flashcard review counts.
+Useful API routes include `GET /api/health`, `GET /api/data/streak`, `POST /api/data/words/:id/review`, `GET /api/data/backup/schedule`, and `GET /api/telegram`.
 
-Run regression checks with `cd backend` then `npm test`. The test launcher sets a unique temporary SQLite path before loading application modules, overriding any personal DB_PATH. Tests cover transaction rollback, duplicate requests, missing words, UTC rollover and streak goals, unchanged backup fields, and waiting/retrying before session advancement. CI runs these tests before building.
+After installing both sets of dependencies, run these checks from the repository root:
 
-No database schema or JSON backup format changes are required by this update. Existing Google Drive destination and scheduling settings are unchanged.
+```sh
+npm --prefix backend test
+npm --prefix backend run build
+npm --prefix frontend run build
+```
+
+The backend test launcher uses a temporary SQLite database. Review tests cover saving answers before advancing, avoiding double counts on retries, and keeping word updates, review history, daily counts, and streaks in one transaction. [CI](.github/workflows/build.yml) runs the backend tests, builds both packages, and checks the Docker image build.
+
+## License
+
+MIT

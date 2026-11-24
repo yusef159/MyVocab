@@ -98,7 +98,14 @@ export async function runTelegramReminderTick(now = new Date(), send = sendTeleg
     const attempted = { ...state, lastAttemptAt: now.toISOString() };
     saveAppStateJson(STATE_KEY, attempted);
     try {
-      await send(`MyVocab reminder: take a quiz and finish today's streak before the day ends! You have completed ${count}/${goal} daily reviews (${goal - count} remaining). Your streak day resets at 00:00 UTC.`);
+      await send([
+        '🔥 Keep your MyVocab streak going!',
+        '',
+        `🎯 Today's progress: ${count}/${goal} reviews (${goal - count} remaining)`,
+        '⏰ Your streak day resets at 00:00 UTC.',
+        '',
+        '💪 A little practice today goes a long way. You’ve got this!',
+      ].join('\n'));
       saveAppStateJson(STATE_KEY, { ...attempted, handledLocalDate: local.date, lastSentAt: now.toISOString(), lastOutcome: 'sent', lastError: undefined });
     } catch (error) {
       saveAppStateJson(STATE_KEY, { ...attempted, lastOutcome: 'failed', lastError: error instanceof Error ? error.message : 'Telegram delivery failed.' });
